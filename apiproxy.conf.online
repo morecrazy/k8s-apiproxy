@@ -1,0 +1,12 @@
+{
+	"Listen" : ":8082",
+	"LogFile" : "kubernetes-apiproxy",
+	"LogDir" : "./log",
+	"LogLevel": "DEBUG",
+	"MysqlSetting":{
+        	"KubeMysqlSetting":{
+    			"Mysqlconn":"root:root123@tcp(120.26.15.41:3306)/kube_apiproxy?charset=utf8mb4&autocommit=true&parseTime=true&loc=Local",
+    			"MysqlConnectPoolSize" : 20
+        	}
+    }
+}

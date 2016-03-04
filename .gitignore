@@ -1,0 +1,12 @@
+*.log
+nohup.out
+*.iml
+*.swp
+*tmp*
+log/*
+*.pid
+.idea
+.DS_Store
+apiproxy.conf.test
+apiproxy.conf.dev
+.build
