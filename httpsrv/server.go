@@ -6,6 +6,14 @@ import (
 	"fmt"
 	"os"
 )
+
+var kubeApiserverPath = ""
+var kubeApiserverPort = ""
+var registryPath = ""
+var registryPort = ""
+var DNSPath = ""
+var DNSPort = ""
+
 func CORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
@@ -19,6 +27,16 @@ func CORSMiddleware() gin.HandlerFunc {
 		**/
 		c.Next()
 	}
+}
+
+func initExternalConfig(config common.Configure)  {
+	serviceSetting := config.External["ServiceSetting"]
+	kubeApiserverPath = serviceSetting["kubeApiserverPath"]
+	kubeApiserverPort = serviceSetting["kubeApiserverPort"]
+	registryPath = serviceSetting["registryPath"]
+	registryPort = serviceSetting["registryPort"]
+	DNSPath = serviceSetting["DNSPath"]
+	DNSPort = serviceSetting["DNSPort"]
 }
 
 func StartServer() {

@@ -9,4 +9,14 @@
     			"MysqlConnectPoolSize" : 20
         	}
     }
+    "External": {
+            "ServiceSetting": {
+                "kubeApiserverPath": "dockerhub.codoon.com",
+                "kubeApiserverPort": ":8080",
+                "registryPath": "dockerhub.codoon.com",
+                "registryPort": ":5000",
+                "DNSPath": "",
+                "DNSPort": ":9999"
+            }
+    }
 }

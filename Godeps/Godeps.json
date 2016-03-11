@@ -4,7 +4,7 @@
 	"Deps": [
 		{
 			"ImportPath": "backend/common",
-			"Rev": "6bf90d4d4c264a3f9cb6fe48d0ab6e22b0da2991"
+			"Rev": "128a4a8008eac3b57b895504aa6c869f50eb973b"
 		},
 		{
 			"ImportPath": "backend/jsonrpc",

@@ -1,7 +1,6 @@
 package common
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -339,8 +338,7 @@ func SendResponse(c *gin.Context, http_code int, data interface{}, err error) er
 
 func SendRequest(http_method, urls string, req_body interface{}, req_form map[string]string, req_raw interface{}) (int, string, error) {
 	tr := &http.Transport{
-		TLSClientConfig:    &tls.Config{InsecureSkipVerify: true},
-		DisableCompression: true,
+		DisableKeepAlives: true,
 	}
 	client := &http.Client{Transport: tr}
 	form := url.Values{}
@@ -365,10 +363,8 @@ func SendRequest(http_method, urls string, req_body interface{}, req_form map[st
 		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	} else if nil != req_raw {
 		var query = []byte(req_raw.(string))
-		//request, _ = http.NewRequest(http_method, urls, nil)
 		request, _ = http.NewRequest(http_method, urls, bytes.NewBuffer(query))
 		request.Header.Set("Content-Type", "text/plain")
-		//request.Body = ioutil.NopCloser(strings.NewReader(string(query)))
 	}
 
 	if nil == req_body && nil == req_form && nil == req_raw {
@@ -381,7 +377,7 @@ func SendRequest(http_method, urls string, req_body interface{}, req_form map[st
 	if nil != err {
 		err = NewInternalError(HttpErrCode, err)
 		Logger.Error("send request err :%v", err)
-		return response.StatusCode, "", err
+		return http.StatusNotFound, "", err
 	}
 
 	if response.StatusCode == http.StatusOK {
@@ -398,7 +394,6 @@ func SendRequest(http_method, urls string, req_body interface{}, req_form map[st
 	}
 
 }
-
 
 func SendFormRequest(http_method, urls string, req_form map[string]string) (int, string, error) {
 	return SendRequest(http_method, urls, nil, req_form, nil)

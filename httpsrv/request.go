@@ -15,11 +15,10 @@ import (
 	"errors"
 	"codoon_ops/kubernetes-apiproxy/object"
 	"third/gorm"
+	"codoon_ops/kubernetes-apiproxy/util/set"
+	"backend/common/protocol"
 )
 
-var hostPath = "dockerhub.codoon.com"
-var hostPortA = ":5000"			//registry服务端口
-var hostPortB = ":8080"			//kubernetes apiserver端口
 var KubeDb *gorm.DB
 
 type Response struct {
@@ -42,8 +41,8 @@ type Data struct {
 
 func GetImagesList(c * gin.Context) {
 	postFix := "/v1/search"
-	url := "http://" + hostPath + hostPortA + postFix
-	statusCode, response, err := SendRequest("GET", url, nil, nil, nil)
+	url := "http://" + registryPath + registryPort + postFix
+	statusCode, response, err := SendRawRequest("GET", url, nil)
 	Logger.Debug("statusCode: %d", statusCode)
 	Logger.Debug("repsonse: %s", response)
 
@@ -75,7 +74,7 @@ func GetImagesList(c * gin.Context) {
 	for _, value := range list {
 		item := value.(map[string]interface{})
 		name := item["name"].(string)
-		mirror := hostPath + "/" + name
+		mirror := kubeApiserverPath + "/" + name
 		ret_list = append(ret_list, map[string]interface{}{
 			"name":     name,
 			"mirror":  mirror,
@@ -96,9 +95,9 @@ func DeleteImage(c * gin.Context) {
 	//name := c.PostForm("name")
 	name := requestData["name"].(string)
 	postFix := "/v1/repositories"
-	url := "http://" + hostPath + hostPortA + postFix + "/" + name + "/"
+	url := "http://" + registryPath + registryPort + postFix + "/" + name + "/"
 	Logger.Debug("url: %v", url)
-	statusCode, response, err := SendRequest("DELETE", url, nil, nil, nil)
+	statusCode, response, err := SendRawRequest("DELETE", url, nil)
 	Logger.Debug("statusCode: %d", statusCode)
 	Logger.Debug("repsonse: %s", response)
 
@@ -127,8 +126,8 @@ func GetImageTags(c * gin.Context) {
 	name := c.Query("name")
 
 	postFix := "/v1/repositories"
-	url := "http://" + hostPath + hostPortA + postFix + "/" + name + "/tags"
-	statusCode, response, err := SendRequest("GET", url, nil, nil, nil)
+	url := "http://" + registryPath + registryPort + postFix + "/" + name + "/tags"
+	statusCode, response, err := SendRawRequest("GET", url, nil)
 	Logger.Debug("statusCode: %d", statusCode)
 	Logger.Debug("repsonse: %s", response)
 
@@ -203,9 +202,9 @@ func DeleteTag(c * gin.Context) {
 	tag := requestData["tag"].(string)
 
 	postFix := "/v1/repositories"
-	url := "http://" + hostPath + hostPortA + postFix + "/" + name + "/tags" + "/" + tag
+	url := "http://" + registryPath + registryPort + postFix + "/" + name + "/tags" + "/" + tag
 	Logger.Debug("url: %v", url)
-	statusCode, response, err := SendRequest("DELETE", url, nil, nil, nil)
+	statusCode, response, err := SendRawRequest("DELETE", url, nil)
 	Logger.Debug("statusCode: %d", statusCode)
 	Logger.Debug("repsonse: %s", response)
 
@@ -243,8 +242,8 @@ func UpdateImageTag (c * gin.Context) {
 
 	commitId := "\"" + commit + "\""
 	postFix := "/v1/repositories"
-	url := "http://" + hostPath + hostPortA + postFix + "/" + name + "/tags/latest"
-	statusCode, response, err := SendRequest("PUT", url, nil, nil, commitId)
+	url := "http://" + registryPath + registryPort + postFix + "/" + name + "/tags/latest"
+	statusCode, response, err := SendRawRequest("PUT", url, commitId)
 	Logger.Debug("statusCode: %d", statusCode)
 	Logger.Debug("repsonse: %s", response)
 
@@ -270,8 +269,8 @@ func UpdateImageTag (c * gin.Context) {
 
 func GetClusterList(c * gin.Context) {
 	postFix := "/api/v1/nodes"
-	url := "http://" + hostPath + hostPortB + postFix
-	statusCode, response, err := SendRequest("GET", url, nil, nil, nil)
+	url := "http://" + kubeApiserverPath + kubeApiserverPort + postFix
+	statusCode, response, err := SendRawRequest("GET", url, nil)
 	Logger.Debug("statusCode: %d", statusCode)
 	Logger.Debug("repsonse: %s", response)
 
@@ -324,8 +323,8 @@ func GetClusterList(c * gin.Context) {
 
 func GetServicesList(c * gin.Context) {
 	postFix := "/api/v1/replicationcontrollers"
-	url := "http://" + hostPath + hostPortB + postFix
-	statusCode, response, err := SendRequest("GET", url, nil, nil, nil)
+	url := "http://" + kubeApiserverPath + kubeApiserverPort + postFix
+	statusCode, response, err := SendRawRequest("GET", url, nil)
 	Logger.Debug("statusCode: %d", statusCode)
 	Logger.Debug("repsonse: %s", response)
 
@@ -447,9 +446,9 @@ func GetServiceMetadata(c * gin.Context) {
 	var res = map[string]interface{}{}
 
 	postFix := "/api/v1/namespaces"
-	url := "http://" + hostPath + hostPortB + postFix + "/" + appNamespace + "/replicationcontrollers" + "/" + appName
+	url := "http://" + kubeApiserverPath + kubeApiserverPort + postFix + "/" + appNamespace + "/replicationcontrollers" + "/" + appName
 
-	statusCode, response, err := SendRequest("GET", url, nil, nil, nil)
+	statusCode, response, err := SendRawRequest("GET", url, nil)
 	Logger.Debug("statusCode: %d", statusCode)
 	Logger.Debug("repsonse: %s", response)
 
@@ -560,8 +559,8 @@ func GetServiceMetadata(c * gin.Context) {
 		svcName := value
 		Logger.Debug("Svc Name is: %v", svcName)
 		postFix = "/api/v1/namespaces/" + appNamespace + "/services" + "/" + svcName
-		url = "http://" + hostPath + hostPortB + postFix
-		statusCode, response, err = SendRequest("GET", url, nil, nil, nil)
+		url = "http://" + kubeApiserverPath + kubeApiserverPort + postFix
+		statusCode, response, err = SendRawRequest("GET", url, nil)
 		Logger.Debug("statusCode: %d", statusCode)
 		Logger.Debug("repsonse: %s", response)
 
@@ -724,9 +723,9 @@ func GetServiceConfig(c * gin.Context) {
 	s := new(StatusResp)			//返回状态结构体
 
 	postFix := "/api/v1/namespaces"
-	url := "http://" + hostPath + hostPortB + postFix + "/" + appNamespace + "/replicationcontrollers" + "/" + appName
+	url := "http://" + kubeApiserverPath + kubeApiserverPort + postFix + "/" + appNamespace + "/replicationcontrollers" + "/" + appName
 
-	statusCode, response, err := SendRequest("GET", url, nil, nil, nil)
+	statusCode, response, err := SendRawRequest("GET", url, nil)
 	Logger.Debug("statusCode: %d", statusCode)
 	Logger.Debug("repsonse: %s", response)
 
@@ -909,7 +908,7 @@ func CreateService(c * gin.Context) {
 	imageName := env["name"].(string)
 	imageTag := env["tag"].(string)
 	//拼接镜像的完整路径
-	imagePath:= hostPath + "/" + imageName + ":" + imageTag
+	imagePath:= kubeApiserverPath + "/" + imageName + ":" + imageTag
 	appName := env["app_name"].(string)
 	appNamespace := env["app_namespace"].(string)
 	group := env["env_name"].(string) //集群名(组名)
@@ -1045,8 +1044,8 @@ func CreateService(c * gin.Context) {
 		Logger.Debug("svc request json is: %v", string(b))
 
 		postFix := "/api/v1/namespaces/" + appNamespace + "/services"
-		url := "http://" + hostPath + hostPortB + postFix
-		statusCode, response, err := SendRequest("POST", url, svcRequestJson, nil, nil)
+		url := "http://" + kubeApiserverPath + kubeApiserverPort + postFix
+		statusCode, response, err := SendJsonRequest("POST", url, svcRequestJson)
 		Logger.Debug("statusCode: %d", statusCode)
 		Logger.Debug("repsonse: %s", response)
 
@@ -1084,8 +1083,8 @@ func CreateService(c * gin.Context) {
 		Logger.Debug("svc request json is: %v", string(b))
 
 		postFix := "/api/v1/namespaces/" + appNamespace + "/services"
-		url := "http://" + hostPath + hostPortB + postFix
-		statusCode, response, err := SendRequest("POST", url, svcRequestJson, nil, nil)
+		url := "http://" + kubeApiserverPath + kubeApiserverPort + postFix
+		statusCode, response, err := SendJsonRequest("POST", url, svcRequestJson)
 		Logger.Debug("statusCode: %d", statusCode)
 		Logger.Debug("repsonse: %s", response)
 
@@ -1179,8 +1178,8 @@ func CreateService(c * gin.Context) {
 	Logger.Debug("rc request json is: %v", string(b))
 
 	postFix := "/api/v1/namespaces/" + appNamespace + "/replicationcontrollers"
-	url := "http://" + hostPath + hostPortB + postFix
-	statusCode, response, err := SendRequest("POST", url, rcRequestJson, nil, nil)
+	url := "http://" + kubeApiserverPath + kubeApiserverPort + postFix
+	statusCode, response, err := SendJsonRequest("POST", url, rcRequestJson)
 	Logger.Debug("statusCode: %d", statusCode)
 	Logger.Debug("repsonse: %s", response)
 
@@ -1191,18 +1190,30 @@ func CreateService(c * gin.Context) {
 		return
 	}
 
-	/*
-	创建slb listener
-	1. 调用kubernetes的api,获取svc的port list,包括listenerport, backendport, protocol
-	1 .如果svcType == "ClusterIp",说明是内部服务,则不需要创建slb listener,直接返回svc的IP和port即可
-	2. 如果svcType 等于 "NodePort",说明是外部服务,则需要
-	   * 创建slb listener,根据groupname 查询数据库获取slb Id
-	   * 遍历svc port list,依次创建listener,
-	   	  * 返回slb的外部ip和listenerPort即可
-	*/
+	//注册服务
+	//两种方式:注册到slb或者注册到DNS.当前版本采用注册到DNS的方法
 
-	/**
-	*外部服务需要创建slb listener
+	//注册到DNS
+	if outterPortNum > 0 {
+		statusCode, err = registerDNS(appName, appNamespace)
+		if statusCode != http.StatusOK {
+			s.Status.State = 1
+			s.Status.Msg = err.Error()
+			c.JSON(statusCode, s)
+			return
+		}
+	}
+
+	//创建slb listener
+	//1. 调用kubernetes的api,获取svc的port list,包括listenerport, backendport, protocol
+	//2 .如果svcType == "ClusterIp",说明是内部服务,则不需要创建slb listener,直接返回svc的IP和port即可
+	//3. 如果svcType 等于 "NodePort",说明是外部服务,则需要
+	//   * 创建slb listener,根据groupname 查询数据库获取slb Id
+	//   * 遍历svc port list,依次创建listener,
+	//   	  * 返回slb的外部ip和listenerPort即可
+
+	//注册到SLB
+	/*外部服务需要创建slb listener
 	if outterPortNum > 0 {
 		slb := object.SLB{
 			GroupName: group,
@@ -1211,7 +1222,7 @@ func CreateService(c * gin.Context) {
 		slbId := slb.LoadBalancerId
 
 		postFix := "/api/v1/namespaces/" + appNamespace + "/services" + "/" + svcName
-		url := "http://" + hostPath + hostPortB + postFix
+		url := "http://" + kubeApiserverPath + kubeApiserverPort + postFix
 		statusCode, response, err := SendRequest("GET", url, nil, nil, nil)
 		Logger.Debug("statusCode: %d", statusCode)
 		Logger.Debug("repsonse: %s", response)
@@ -1268,6 +1279,7 @@ func CreateService(c * gin.Context) {
 		}
 	}
 	*/
+
 	r := StatusResp{}
 
 	r.Status.State = 0
@@ -1295,9 +1307,9 @@ func UpdateServiceQuota(c *gin.Context) {
 
 	//获取当前服务的版本和配额
 	postFix := "/api/v1/namespaces"
-	url := "http://" + hostPath + hostPortB + postFix + "/" + appNamespace + "/replicationcontrollers" + "/" + appName
+	url := "http://" + kubeApiserverPath + kubeApiserverPort + postFix + "/" + appNamespace + "/replicationcontrollers" + "/" + appName
 
-	statusCode, response, err := SendRequest("GET", url, nil, nil, nil)
+	statusCode, response, err := SendRawRequest("GET", url, nil)
 	Logger.Debug("statusCode: %d", statusCode)
 	Logger.Debug("repsonse: %s", response)
 
@@ -1403,9 +1415,9 @@ func UpdateServiceCmd(c *gin.Context) {
 
 	//获取当前服务的版本和配额
 	postFix := "/api/v1/namespaces"
-	url := "http://" + hostPath + hostPortB + postFix + "/" + appNamespace + "/replicationcontrollers" + "/" + appName
+	url := "http://" + kubeApiserverPath + kubeApiserverPort + postFix + "/" + appNamespace + "/replicationcontrollers" + "/" + appName
 
-	statusCode, response, err := SendRequest("GET", url, nil, nil, nil)
+	statusCode, response, err := SendRawRequest("GET", url, nil)
 	Logger.Debug("statusCode: %d", statusCode)
 	Logger.Debug("repsonse: %s", response)
 
@@ -1539,7 +1551,7 @@ func DeliveryRelease(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, s)
 	}
 
-	image := hostPath + "/" + imageName + ":" + tag
+	image := kubeApiserverPath + "/" + imageName + ":" + tag
 	cmd := "kubectl rolling-update " + appName + " --update-period=20s --namespace=" + appNamespace + " --image=" + image
 	Logger.Debug("The cmd is: %v", cmd)
 
@@ -1565,8 +1577,8 @@ func DeliveryRelease(c *gin.Context) {
  */
 func getReplicationControllerName(name, namespace string) (string, int, int, error) {
 	postFix := "/api/v1/namespaces"
-	url := "http://" + hostPath + hostPortB + postFix + "/" + namespace + "/services" + "/" + name
-	statusCode, response, err := SendRequest("GET", url, nil, nil, nil)
+	url := "http://" + kubeApiserverPath + kubeApiserverPort + postFix + "/" + namespace + "/services" + "/" + name
+	statusCode, response, err := SendRawRequest("GET", url, nil)
 	Logger.Debug("statusCode: %d", statusCode)
 	Logger.Debug("repsonse: %s", response)
 
@@ -1676,8 +1688,8 @@ func InitDBPool(setting MysqlConfig) error {
 func getClusterIPs(groupname string) ([]string, int, error) {
 	ips := []string{}
 	postFix := "/api/v1/nodes"
-	url := "http://" + hostPath + hostPortB + postFix
-	statusCode, response, err := SendRequest("GET", url, nil, nil, nil)
+	url := "http://" + kubeApiserverPath + kubeApiserverPort + postFix
+	statusCode, response, err := SendRawRequest("GET", url, nil)
 	Logger.Debug("statusCode: %d", statusCode)
 	Logger.Debug("repsonse: %s", response)
 
@@ -1718,4 +1730,48 @@ func getClusterIPs(groupname string) ([]string, int, error) {
 
 	}
 	return ips, http.StatusOK, nil
+}
+
+func registerDNS(appName, appNamespace string) (int, error) {
+	domain := appName + ".codoon.com"
+	cmd := "kubectl get pods -o wide --namespace=" + appNamespace + " | grep '^" + appName + "' | awk '{print $6}'"
+	Logger.Debug("The cmd is: %v", cmd)
+
+	bytes, err := util.ExecCommand(cmd)
+
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+
+	arrays := strings.Split(string(bytes), "\n")
+	set := set.New()
+
+	for _, item := range arrays {
+		set.Add(item)
+	}
+	urlList := set.List()
+
+	urls := make([]protocol.RR, 0)
+	for _, url := range urlList {
+		item := protocol.RR{
+			"host": url,
+		}
+		append(urls, item)
+	}
+
+	reqJson := protocol.SetDnsReq{
+		"url": domain,
+		"rrs": urls,
+	}
+
+	//调用http接口,注册服务名到DNS server
+	Logger.Debug("registry %v to DNS server, the ips is: %v", domain, urls)
+	statusCode, response, err := SendJsonRequest("POST", DNSPath, reqJson)
+	Logger.Debug("statusCode: %d", statusCode)
+	Logger.Debug("repsonse: %s", response)
+
+	if err != nil {
+		return statusCode, err
+	}
+	return http.StatusOK, nil
 }
