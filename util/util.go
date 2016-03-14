@@ -110,7 +110,7 @@ func BytesToDNSRequestJSON(bytes []byte, domain string) (req interface{}) {
 	set := set.New()
 
 	for _, item := range arrays {
-		if item != "" {
+		if item != "\n" {
 			set.Add(item)
 		}
 		Logger.Debug("the ip is: %v", item)
