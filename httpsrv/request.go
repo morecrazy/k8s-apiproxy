@@ -1194,7 +1194,7 @@ func CreateService(c * gin.Context) {
 	//注册到DNS
 	//if outterPortNum > 0 {
 	var kubeCmd KubeCmdImpl
-	var httpFetcher HttpResonseFetcher
+	var httpFetcher HttpResponseFetcher
 	go registerDNS(appName, appNamespace, kubeCmd, httpFetcher)
 	/**
 	statusCode, err = registerDNS(appName, appNamespace, kubeCmd, httpFetcher)

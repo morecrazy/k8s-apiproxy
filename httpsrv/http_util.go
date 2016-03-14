@@ -2,15 +2,13 @@ package httpsrv
 
 import . "backend/common"
 
-type HttpResonseFetcher interface {
+type HttpResponseFetch interface {
 	SendJsonRequest(http_method, urls string, req_body interface{}) (int, string, error)
 }
 
-type Fetcher struct {
+type HttpResponseFetcher struct {}
 
-}
-
-func (fetcher Fetcher) SendJsonRequest(http_method, urls string, req_body interface{})  (int, string, error) {
+func (fetcher HttpResponseFetcher) SendJsonRequest(http_method, urls string, req_body interface{})  (int, string, error) {
 	Logger.Debug("Send request to DNS server url is: %v", urls)
 	return SendJsonRequest(http_method, urls, req_body)
 }
