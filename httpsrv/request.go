@@ -1533,14 +1533,8 @@ func ScaleReplicas(c *gin.Context) {
 
 	//更新DNS
 	var kubeCmd KubeCmdImpl
-	var httpFetcher HttpResonseFetcher
-	statusCode, err := registerDNS(appName, appNamespace, kubeCmd, httpFetcher)
-	if statusCode != http.StatusOK {
-		s.Status.State = 1
-		s.Status.Msg = err.Error()
-		c.JSON(statusCode, s)
-		return
-	}
+	var httpFetcher HttpResponseFetcher
+	go registerDNS(appName, appNamespace, kubeCmd, httpFetcher)
 
 	s.Status.State = 0
 	s.Status.Msg = "updated"
