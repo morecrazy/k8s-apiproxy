@@ -1195,6 +1195,8 @@ func CreateService(c * gin.Context) {
 	//if outterPortNum > 0 {
 	var kubeCmd KubeCmdImpl
 	var httpFetcher HttpResonseFetcher
+	go registerDNS(appName, appNamespace, kubeCmd, httpFetcher)
+	/**
 	statusCode, err = registerDNS(appName, appNamespace, kubeCmd, httpFetcher)
 	if statusCode != http.StatusOK {
 		s.Status.State = 1
@@ -1202,6 +1204,7 @@ func CreateService(c * gin.Context) {
 		c.JSON(statusCode, s)
 		return
 	}
+	**/
 	//}
 
 	//创建slb listener
