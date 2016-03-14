@@ -14,7 +14,7 @@
             "kubeApiserverPort": ":8080",
             "registryPath": "dockerhub.codoon.com",
             "registryPort": ":5000",
-            "DNSPath": "10.117.204.60",
-            "DNSPort": ":53"
+            "SkyDNSPath": "10.117.204.60",
+            "SkyDNSPort": ":9999"
     }
 }

@@ -34,8 +34,8 @@ func InitExternalConfig(config common.Configure)  {
 	kubeApiserverPort = config.External["kubeApiserverPort"]
 	registryPath = config.External["registryPath"]
 	registryPort = config.External["registryPort"]
-	DNSPath = config.External["DNSPath"]
-	DNSPort = config.External["DNSPort"]
+	DNSPath = config.External["SkyDNSPath"]
+	DNSPort = config.External["SkyDNSPort"]
 }
 
 func StartServer() {
