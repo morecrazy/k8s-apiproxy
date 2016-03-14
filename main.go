@@ -47,7 +47,6 @@ func main() {
 		return
 	}
 
-
 	//api.SetAppInfo("KM0BWn5yGIjiYW3S", "VIECii4MYVv7QEVl5QDJbAxGH6nqH0")
 	g_logger.Debug("Start server...")
 	httpsrv.InitExternalConfig(g_config)
