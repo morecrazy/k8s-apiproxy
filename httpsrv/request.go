@@ -1758,7 +1758,8 @@ func registerDNS(appName, appNamespace string, kubeCmd KubeCmd, fetcher HttpReso
 
 	reqJson := util.BytesToDNSRequestJSON(bytes, domain)
 
-	statusCode, response, err := fetcher.SendJsonRequest("POST", DNSPath, reqJson)
+	url := "http://" + DNSPath + DNSPort
+	statusCode, response, err := fetcher.SendJsonRequest("POST", url, reqJson)
 	Logger.Debug("statusCode: %d", statusCode)
 	Logger.Debug("repsonse: %s", response)
 

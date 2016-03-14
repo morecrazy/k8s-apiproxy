@@ -11,5 +11,6 @@ type Fetcher struct {
 }
 
 func (fetcher Fetcher) SendJsonRequest(http_method, urls string, req_body interface{})  (int, string, error) {
-	 return SendJsonRequest(http_method, urls, req_body)
+	Logger.Debug("Send request to DNS server url is: %v", urls)
+	return SendJsonRequest(http_method, urls, req_body)
 }
