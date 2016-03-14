@@ -29,14 +29,13 @@ func CORSMiddleware() gin.HandlerFunc {
 	}
 }
 
-func initExternalConfig(config common.Configure)  {
-	serviceSetting := config.External["ServiceSetting"]
-	kubeApiserverPath = serviceSetting["kubeApiserverPath"]
-	kubeApiserverPort = serviceSetting["kubeApiserverPort"]
-	registryPath = serviceSetting["registryPath"]
-	registryPort = serviceSetting["registryPort"]
-	DNSPath = serviceSetting["DNSPath"]
-	DNSPort = serviceSetting["DNSPort"]
+func InitExternalConfig(config common.Configure)  {
+	kubeApiserverPath = config.External["kubeApiserverPath"]
+	kubeApiserverPort = config.External["kubeApiserverPort"]
+	registryPath = config.External["registryPath"]
+	registryPort = config.External["registryPort"]
+	DNSPath = config.External["DNSPath"]
+	DNSPort = config.External["DNSPort"]
 }
 
 func StartServer() {

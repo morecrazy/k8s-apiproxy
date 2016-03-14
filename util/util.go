@@ -6,6 +6,9 @@ import (
 	"io/ioutil"
 	"fmt"
 	. "backend/common"
+	"strings"
+	"codoon_ops/kubernetes-apiproxy/util/set"
+	"backend/common/protocol"
 )
 
 func GetRuntimeEnv() string {
@@ -100,4 +103,31 @@ func Substr(str string, start int, length int) string {
 	}
 
 	return string(rs[start:end])
+}
+
+func BytesToDNSRequestJSON(bytes []byte, domain string) (req interface{}) {
+	arrays := strings.Split(string(bytes), "\n")
+	set := set.New()
+
+	for _, item := range arrays {
+		set.Add(item)
+	}
+	urlList := set.List()
+
+	urls := make([]protocol.RR, 0)
+	for _, url := range urlList {
+		item := protocol.RR{
+			Host: url.(string),
+		}
+		urls = append(urls, item)
+	}
+
+	reqJson := protocol.SetDnsReq{
+		URL: domain,
+		RRs: urls,
+	}
+
+	//调用http接口,注册服务名到DNS server
+	Logger.Debug("registry %v to DNS server, the ips is: %v", domain, urls)
+	return reqJson
 }

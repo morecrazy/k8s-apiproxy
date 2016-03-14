@@ -10,13 +10,11 @@
         	}
     }
     "External": {
-            "ServiceSetting": {
-                "kubeApiserverPath": "dockerhub.codoon.com",
-                "kubeApiserverPort": ":8080",
-                "registryPath": "dockerhub.codoon.com",
-                "registryPort": ":5000",
-                "DNSPath": "",
-                "DNSPort": ":9999"
-            }
+            "kubeApiserverPath": "dockerhub.codoon.com",
+            "kubeApiserverPort": ":8080",
+            "registryPath": "dockerhub.codoon.com",
+            "registryPort": ":5000",
+            "DNSPath": "10.117.204.60",
+            "DNSPort": ":53"
     }
 }

@@ -15,8 +15,6 @@ import (
 	"errors"
 	"codoon_ops/kubernetes-apiproxy/object"
 	"third/gorm"
-	"codoon_ops/kubernetes-apiproxy/util/set"
-	"backend/common/protocol"
 )
 
 var KubeDb *gorm.DB
@@ -615,7 +613,7 @@ func GetServiceMetadata(c * gin.Context) {
 				protocol = portMap[name].(string)
 			}
 			listenerPort := strconv.FormatFloat(port, 'g', 5, 64)
-			url := protocol + "://" + ip + ":" + listenerPort
+			url := protocol + "://" + appName + ".codoon.com" + ":" + listenerPort
 			urls = append(urls, url)
 		}
 	}
@@ -1194,15 +1192,17 @@ func CreateService(c * gin.Context) {
 	//两种方式:注册到slb或者注册到DNS.当前版本采用注册到DNS的方法
 
 	//注册到DNS
-	if outterPortNum > 0 {
-		statusCode, err = registerDNS(appName, appNamespace)
-		if statusCode != http.StatusOK {
-			s.Status.State = 1
-			s.Status.Msg = err.Error()
-			c.JSON(statusCode, s)
-			return
-		}
+	//if outterPortNum > 0 {
+	var kubeCmd KubeCmdImpl
+	var httpFetcher HttpResonseFetcher
+	statusCode, err = registerDNS(appName, appNamespace, kubeCmd, httpFetcher)
+	if statusCode != http.StatusOK {
+		s.Status.State = 1
+		s.Status.Msg = err.Error()
+		c.JSON(statusCode, s)
+		return
 	}
+	//}
 
 	//创建slb listener
 	//1. 调用kubernetes的api,获取svc的port list,包括listenerport, backendport, protocol
@@ -1527,6 +1527,18 @@ func ScaleReplicas(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, s)
 		return
 	}
+
+	//更新DNS
+	var kubeCmd KubeCmdImpl
+	var httpFetcher HttpResonseFetcher
+	statusCode, err := registerDNS(appName, appNamespace, kubeCmd, httpFetcher)
+	if statusCode != http.StatusOK {
+		s.Status.State = 1
+		s.Status.Msg = err.Error()
+		c.JSON(statusCode, s)
+		return
+	}
+
 	s.Status.State = 0
 	s.Status.Msg = "updated"
 	c.JSON(http.StatusOK, s)
@@ -1732,41 +1744,18 @@ func getClusterIPs(groupname string) ([]string, int, error) {
 	return ips, http.StatusOK, nil
 }
 
-func registerDNS(appName, appNamespace string) (int, error) {
+func registerDNS(appName, appNamespace string, kubeCmd KubeCmd, fetcher HttpResonseFetcher) (int, error) {
 	domain := appName + ".codoon.com"
-	cmd := "kubectl get pods -o wide --namespace=" + appNamespace + " | grep '^" + appName + "' | awk '{print $6}'"
-	Logger.Debug("The cmd is: %v", cmd)
-
-	bytes, err := util.ExecCommand(cmd)
+	//调用kube cmd命令获取数据
+	bytes, err := kubeCmd.GetNodesIP(appName, appNamespace)
 
 	if err != nil {
 		return http.StatusInternalServerError, err
 	}
 
-	arrays := strings.Split(string(bytes), "\n")
-	set := set.New()
+	reqJson := util.BytesToDNSRequestJSON(bytes, domain)
 
-	for _, item := range arrays {
-		set.Add(item)
-	}
-	urlList := set.List()
-
-	urls := make([]protocol.RR, 0)
-	for _, url := range urlList {
-		item := protocol.RR{
-			"host": url,
-		}
-		append(urls, item)
-	}
-
-	reqJson := protocol.SetDnsReq{
-		"url": domain,
-		"rrs": urls,
-	}
-
-	//调用http接口,注册服务名到DNS server
-	Logger.Debug("registry %v to DNS server, the ips is: %v", domain, urls)
-	statusCode, response, err := SendJsonRequest("POST", DNSPath, reqJson)
+	statusCode, response, err := fetcher.SendJsonRequest("POST", DNSPath, reqJson)
 	Logger.Debug("statusCode: %d", statusCode)
 	Logger.Debug("repsonse: %s", response)
 
@@ -1775,3 +1764,4 @@ func registerDNS(appName, appNamespace string) (int, error) {
 	}
 	return http.StatusOK, nil
 }
+
