@@ -3,8 +3,6 @@ package httpsrv
 import (
 	"third/gin"
 	"backend/common"
-	"fmt"
-	"os"
 )
 
 var kubeApiserverPath = ""
@@ -39,14 +37,11 @@ func InitExternalConfig(config common.Configure)  {
 }
 
 func StartServer() {
+	defer common.MyRecovery()
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(CORSMiddleware())
 	//router.Use(common.Log())
 	SetupRoutes(router)
-	err := router.Run(common.Config.Listen)
-	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
-	}
+	router.Run(common.Config.Listen)
 }
