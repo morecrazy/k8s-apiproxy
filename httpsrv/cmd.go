@@ -19,7 +19,7 @@ func (kubeCmd KubeCmdImpl) GetNodesIP(appName, appNamespace string) ([]byte, err
 	var bytes []byte
 	var err error
 
-	timer1 := time.NewTicker(10 * time.Second)
+	timer1 := time.NewTicker(5 * time.Second)
 	try:
 	for {
 		select {

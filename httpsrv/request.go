@@ -13,8 +13,8 @@ import (
 	"strconv"
 	"fmt"
 	"errors"
-	"codoon_ops/kubernetes-apiproxy/object"
 	"third/gorm"
+	"backend/common/protocol"
 )
 
 var KubeDb *gorm.DB
@@ -588,20 +588,30 @@ func GetServiceMetadata(c * gin.Context) {
 		spec = res["spec"].(map[string]interface{})
 		ports := spec["ports"].([]interface{})
 		svcType := spec["type"].(string)
-		ip := ""
-		//内部服务
-		if svcType == "ClusterIp" {
-			ip = spec["clusterIp"].(string)
-		} else if svcType == "NodePort" {
-			//外部服务
-			//查询数据库,根据集群名字获取slb的ip
-			slb := object.SLB{
-				GroupName: groupname,
-			}
-			err = slb.Fetch(KubeDb)
-			ip = slb.Ip
-			Logger.Debug("SLB ip is: %v", ip)
+
+		domain := ""
+		switch svcType {
+		case "ClusterIp":
+			domain = appName + "in.codoon.com"
+		case "NodePort":
+			domain = appName + "codoon.com"
 		}
+		//查询DNS服务,判断域名是否注册上
+		var fetcher HttpResponseFetcher
+		statusCode, response, err = checkServiceDNS(domain, fetcher)
+		if statusCode != http.StatusOK {
+			s.Status.State = 1
+			s.Status.Msg = err.Error()
+			c.JSON(statusCode, s)
+			return
+		}
+
+		//如果域名没有注册上,则使用cluterIp
+		//返回值"OK"表示DNS server没有相应的服务
+		if response == "OK" {
+			domain = spec["clusterIp"].(string)
+		}
+
 		for _, value := range ports {
 			item := value.(map[string]interface{})
 
@@ -613,7 +623,7 @@ func GetServiceMetadata(c * gin.Context) {
 				protocol = portMap[name].(string)
 			}
 			listenerPort := strconv.FormatFloat(port, 'g', 5, 64)
-			url := protocol + "://" + appName + ".codoon.com" + ":" + listenerPort
+			url := protocol + "://" + domain + ":" + listenerPort
 			urls = append(urls, url)
 		}
 	}
@@ -1094,9 +1104,7 @@ func CreateService(c * gin.Context) {
 		}
 	}
 
-	/*
-	然后创建rc
-	*/
+	//创建rc
 	rcRequestJson := map[string]interface{}{
 		"kind": "ReplicationController",
 		"apiVersion": "v1",
@@ -1290,6 +1298,7 @@ func CreateService(c * gin.Context) {
 	c.JSON(statusCode, r)
 }
 
+//rolling-update
 func UpdateServiceQuota(c *gin.Context) {
 	body, _ := ioutil.ReadAll(c.Request.Body)
 
@@ -1399,6 +1408,7 @@ func UpdateServiceQuota(c *gin.Context) {
 	c.JSON(http.StatusOK, s)
 }
 
+//rolling-update
 func UpdateServiceCmd(c *gin.Context) {
 	body, _ := ioutil.ReadAll(c.Request.Body)
 
@@ -1752,7 +1762,7 @@ func registerDNS(appName, appNamespace string, kubeCmd KubeCmd, fetcher HttpResp
 
 	reqJson := util.BytesToDNSRequestJSON(bytes, domain)
 
-	url := "http://" + DNSPath + DNSPort + "/setdns"
+	url := "http://" + skyDNSPath + skyDNSPort + "/setdns"
 	statusCode, response, err := fetcher.SendJsonRequest("POST", url, reqJson)
 	Logger.Debug("statusCode: %d", statusCode)
 	Logger.Debug("repsonse: %s", response)
@@ -1763,3 +1773,18 @@ func registerDNS(appName, appNamespace string, kubeCmd KubeCmd, fetcher HttpResp
 	return http.StatusOK, nil
 }
 
+func checkServiceDNS(domain string, fetcher HttpResponseFetcher) (int, string, error) {
+	reqJson := protocol.GetDnsReq{
+		URL:domain,
+	}
+
+	url := "http://" + skyDNSPath + skyDNSPort + "/getdns"
+	statusCode, response, err := fetcher.SendJsonRequest("POST", url, reqJson)
+	Logger.Debug("statusCode: %d", statusCode)
+	Logger.Debug("repsonse: %s", response)
+
+	if err != nil {
+		return statusCode, "", err
+	}
+	return http.StatusOK, response, nil
+}

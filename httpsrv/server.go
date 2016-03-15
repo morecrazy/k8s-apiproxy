@@ -11,8 +11,8 @@ var kubeApiserverPath = ""
 var kubeApiserverPort = ""
 var registryPath = ""
 var registryPort = ""
-var DNSPath = ""
-var DNSPort = ""
+var skyDNSPath = ""
+var skyDNSPort = ""
 
 func CORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -34,8 +34,8 @@ func InitExternalConfig(config common.Configure)  {
 	kubeApiserverPort = config.External["kubeApiserverPort"]
 	registryPath = config.External["registryPath"]
 	registryPort = config.External["registryPort"]
-	DNSPath = config.External["SkyDNSPath"]
-	DNSPort = config.External["SkyDNSPort"]
+	skyDNSPath = config.External["SkyDNSPath"]
+	skyDNSPort = config.External["SkyDNSPort"]
 }
 
 func StartServer() {
