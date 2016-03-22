@@ -1752,7 +1752,13 @@ func getClusterIPs(groupname string) ([]string, int, error) {
 }
 
 func registerDNS(appName, appNamespace string, kubeCmd KubeCmd, fetcher HttpResponseFetcher) (int, error) {
-	domain := appName + ".codoon.com"
+	domain := ""
+	switch appNamespace {
+	case "default":
+		domain = appName + ".codoon.com"
+	case "in":
+		domain = appName + ".in.codoon.com"
+	}
 	//调用kube cmd命令获取数据
 	bytes, err := kubeCmd.GetNodesIP(appName, appNamespace)
 
