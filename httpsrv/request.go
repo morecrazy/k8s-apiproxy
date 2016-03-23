@@ -587,24 +587,23 @@ func GetServiceMetadata(c * gin.Context) {
 
 		spec = res["spec"].(map[string]interface{})
 		ports := spec["ports"].([]interface{})
-		svcType := spec["type"].(string)
 
 		domain := ""
-		switch svcType {
-		case "ClusterIp":
-			domain = appName + "in.codoon.com"
-		case "NodePort":
-			domain = appName + "codoon.com"
+		switch appNamespace {
+		case "in":
+			domain = appName + ".in.codoon.com"
+		case "default":
+			domain = appName + ".codoon.com"
 		}
 		//查询DNS服务,判断域名是否注册上
-		var fetcher HttpResponseFetcher
-		statusCode, response, err = checkServiceDNS(domain, fetcher)
-		if statusCode != http.StatusOK {
-			s.Status.State = 1
-			s.Status.Msg = err.Error()
-			c.JSON(statusCode, s)
-			return
-		}
+		//var fetcher HttpResponseFetcher
+		//statusCode, response, err = checkServiceDNS(domain, fetcher)
+		//if statusCode != http.StatusOK {
+		//	s.Status.State = 1
+		//	s.Status.Msg = err.Error()
+		//	c.JSON(statusCode, s)
+		//	return
+		//}
 
 		//如果域名没有注册上,则使用cluterIp
 		//返回值"OK"表示DNS server没有相应的服务
