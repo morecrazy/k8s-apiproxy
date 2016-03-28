@@ -72,7 +72,7 @@ func GetImagesList(c * gin.Context) {
 	for _, value := range list {
 		item := value.(map[string]interface{})
 		name := item["name"].(string)
-		mirror := kubeApiserverPath + "/" + name
+		mirror := registryPath + "/" + name
 		ret_list = append(ret_list, map[string]interface{}{
 			"name":     name,
 			"mirror":  mirror,
@@ -1569,7 +1569,7 @@ func DeliveryRelease(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, s)
 	}
 
-	image := kubeApiserverPath + "/" + imageName + ":" + tag
+	image := registryPath + "/" + imageName + ":" + tag
 	cmd := "kubectl rolling-update " + appName + " --update-period=20s --namespace=" + appNamespace + " --image=" + image
 	Logger.Debug("The cmd is: %v", cmd)
 
