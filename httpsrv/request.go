@@ -915,7 +915,7 @@ func CreateService(c * gin.Context) {
 	imageName := env["name"].(string)
 	imageTag := env["tag"].(string)
 	//拼接镜像的完整路径
-	imagePath:= kubeApiserverPath + "/" + imageName + ":" + imageTag
+	imagePath:= registryPath + "/" + imageName + ":" + imageTag
 	appName := env["app_name"].(string)
 	appNamespace := env["app_namespace"].(string)
 	group := env["env_name"].(string) //集群名(组名)
