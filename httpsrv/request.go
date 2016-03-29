@@ -1529,8 +1529,6 @@ func ScaleReplicas(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, s)
 	}
 
-	strs := strings.Split(appName, "-v")
-	appName = strs[0]
 	cmd := "kubectl scale rc " + appName + " --namespace=" + appNamespace + " --replicas=" + replicas
 	Logger.Debug("The cmd is: %v", cmd)
 
@@ -1543,6 +1541,8 @@ func ScaleReplicas(c *gin.Context) {
 	}
 
 	//更新DNS
+	strs := strings.Split(appName, "-v")
+	appName = strs[0]
 	kubeCmd := new(KubeCmdImpl)
 	httpFetcher := new(HttpResponseFetcher)
 	go registerDNS(appName, appNamespace, kubeCmd, httpFetcher)
