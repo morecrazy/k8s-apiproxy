@@ -53,7 +53,7 @@ func (kubeCmd *KubeCmdImpl) Restart(appName, appNamespace, oldVersion, oldImage 
 	Logger.Info("Starting restart app: %v", appName)
 	t := time.Now()
 	newVersion := t.Format("20060102150405")
-	newVersion = "-v" + newVersion
+	newVersion = "v" + newVersion
 
 	newAppName := ""
 	strs := strings.Split(appName, "-v")
@@ -62,7 +62,7 @@ func (kubeCmd *KubeCmdImpl) Restart(appName, appNamespace, oldVersion, oldImage 
 	for i :=0; i < len(strs) -1; i++ {
 		newAppName += strs[i] + "-"
 	}**/
-	newAppName = newAppName + newVersion
+	newAppName = newAppName + "-" + newVersion
 	Logger.Debug("New App Name is: %v", newAppName)
 
 	//滚动更新
