@@ -1200,8 +1200,8 @@ func CreateService(c * gin.Context) {
 
 	//注册到DNS
 	//if outterPortNum > 0 {
-	var kubeCmd KubeCmdImpl
-	var httpFetcher HttpResponseFetcher
+	kubeCmd := new(KubeCmdImpl)
+	httpFetcher := new(HttpResponseFetcher)
 	go registerDNS(appName, appNamespace, kubeCmd, httpFetcher)
 	/**
 	statusCode, err = registerDNS(appName, appNamespace, kubeCmd, httpFetcher)
@@ -1541,8 +1541,8 @@ func ScaleReplicas(c *gin.Context) {
 	}
 
 	//更新DNS
-	var kubeCmd KubeCmdImpl
-	var httpFetcher HttpResponseFetcher
+	kubeCmd := new(KubeCmdImpl)
+	httpFetcher := new(HttpResponseFetcher)
 	go registerDNS(appName, appNamespace, kubeCmd, httpFetcher)
 
 	s.Status.State = 0
@@ -1552,37 +1552,46 @@ func ScaleReplicas(c *gin.Context) {
 }
 
 func DeliveryRelease(c *gin.Context) {
+	//解析request body数据
 	body, _ := ioutil.ReadAll(c.Request.Body)
-
-	var requestData map[string]interface{}  //获取request body的数据
+	var requestData map[string]interface{}
 	err := json.Unmarshal(body, &requestData)
 
+	//appName: 应用名字
+	//appNamespace: 应用命名空间
+	//image: 应用镜像
 	appName := requestData["app_name"].(string)
 	appNamespace := requestData["app_namespace"].(string)
 	imageName := requestData["image_name"].(string)
 	tag := requestData["tag"].(string)
+	image := registryPath + "/" + imageName + ":" + tag
 
 	s := new(StatusResp)
 	if err != nil {
 		s.Status.State = 1
 		s.Status.Msg = err.Error()
 		c.JSON(http.StatusInternalServerError, s)
+		return
 	}
 
-	image := registryPath + "/" + imageName + ":" + tag
-	cmd := "kubectl rolling-update " + appName + " --update-period=20s --namespace=" + appNamespace + " --image=" + image
-	Logger.Debug("The cmd is: %v", cmd)
+	kubeCmd := new(KubeCmdImpl)
+	fetcher := new(HttpResponseFetcher)
+	statusCode, err := deliveryRelease(appName, appNamespace, image, fetcher, kubeCmd)
 
-	go util.ExecCommand(cmd)
-	/**
-	_, err = util.ExecCommand(cmd)
 	if err != nil {
-		s.State = 1
-		s.Msg = err.Error()
+		s.Status.State = 1
+		s.Status.Msg = err.Error()
 		c.JSON(http.StatusInternalServerError, s)
 		return
 	}
-	**/
+
+	if statusCode != http.StatusOK {
+		s.Status.State = 1
+		s.Status.Msg = err.Error()
+		c.JSON(statusCode, s)
+		return
+	}
+
 	s.Status.State = 0
 	s.Status.Msg = "updated"
 	c.JSON(http.StatusOK, s)
@@ -1750,7 +1759,7 @@ func getClusterIPs(groupname string) ([]string, int, error) {
 	return ips, http.StatusOK, nil
 }
 
-func registerDNS(appName, appNamespace string, kubeCmd KubeCmd, fetcher HttpResponseFetcher) (int, error) {
+func registerDNS(appName, appNamespace string, kubeCmd KubeCmd, fetcher HttpResponseFetch) (int, error) {
 	domain := ""
 	switch appNamespace {
 	case "default":
@@ -1778,7 +1787,7 @@ func registerDNS(appName, appNamespace string, kubeCmd KubeCmd, fetcher HttpResp
 	return http.StatusOK, nil
 }
 
-func checkServiceDNS(domain string, fetcher HttpResponseFetcher) (int, string, error) {
+func checkServiceDNS(domain string, fetcher HttpResponseFetch) (int, string, error) {
 	reqJson := protocol.GetDnsReq{
 		URL:domain,
 	}
@@ -1792,4 +1801,51 @@ func checkServiceDNS(domain string, fetcher HttpResponseFetcher) (int, string, e
 		return statusCode, "", err
 	}
 	return http.StatusOK, response, nil
+}
+
+//版本发布
+//appName: 应用名字
+//appNamespace: 应用命名空间
+//image: 镜像
+//fetcher: 访问kube-apiserver获取数据
+//kubeCmd: 调用kubectl命令
+func deliveryRelease(appName, appNamespace string, image string, fetcher HttpResponseFetch, kubeCmd KubeCmd) (int, error) {
+	//获取当前服务的版本和镜像名
+	statusCode, response, err := fetcher.GetKubeAppContent(appName, appNamespace)
+
+	bytes := []byte(response)
+	var res map[string]interface{}
+
+	err = json.Unmarshal(bytes, &res)
+
+	//获取老版本信息
+	metadata := res["metadata"].(map[string]interface{})
+	labels := metadata["labels"].(map[string]interface{})
+	oldVersion := ""
+	if labels["version"] != nil {
+		oldVersion = labels["version"].(string)
+	}
+
+	//获取老版本镜像
+	spec := res["spec"].(map[string]interface{})
+	template := spec["template"].(map[string]interface{})
+	tSpec := template["spec"].(map[string]interface{})
+	containers := tSpec["containers"].([]interface{})
+
+	//TODO 暂时支持单个容器
+	container := containers[0].(map[string]interface{})
+	oldImage := ""
+	if container["image"] != nil {
+		oldImage = container["image"].(string)
+	}
+
+	if image != oldImage {
+		//发布版本
+		_, err = kubeCmd.RollingUpdate(appName, appNamespace, image)
+	} else if image == oldImage {
+		//应用重启
+		_, err = kubeCmd.Restart(appName, appNamespace, oldVersion, oldImage)
+	}
+	return statusCode, err
+
 }
