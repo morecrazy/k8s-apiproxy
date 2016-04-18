@@ -1138,6 +1138,10 @@ func CreateService(c * gin.Context) {
 									"cpu": cpu,
 									"memory": mem,
 								},
+								"requests": map[string]interface{}{
+									"cpu": "250m",
+									"memory": "250Mi",
+								},
 							},
 							"volumeMounts": []interface{}{
 								map[string]interface{}{
