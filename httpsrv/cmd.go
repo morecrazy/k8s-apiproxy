@@ -43,7 +43,7 @@ func (kubeCmd *KubeCmdImpl) GetNodesIP(appName, appNamespace string) ([]byte, er
 
 func (kubeCmd *KubeCmdImpl) RollingUpdate(appName, appNamespace string, image string) (string, error) {
 	Logger.Info("Starting rolling update app: %v", appName)
-	cmd := "kubectl rolling-update " + appName + " --update-period=20s --namespace=" + appNamespace + " --image=" + image
+	cmd := "kubectl rolling-update " + appName + " --update-period=10s --namespace=" + appNamespace + " --image=" + image
 	Logger.Debug("The cmd is: %v", cmd)
 	go util.ExecCommand(cmd)
 	return cmd, nil
@@ -70,7 +70,7 @@ func (kubeCmd *KubeCmdImpl) Restart(appName, appNamespace, oldVersion, oldImage 
 			" | sed 's/resourceVersion:.*/resourceVersion: ''/g' " +
 			" | sed 's/name: " + appName + "/name: " + newAppName + "/g' " +   //替换rc名字
 			" | sed 's/version: " + oldVersion + "/version: " + newVersion + "/g' " +		  //替换rc版本
-			" | kubectl rolling-update " + appName + " --update-period=20s --namespace=" + appNamespace + " -f - "								//滚动更新
+			" | kubectl rolling-update " + appName + " --update-period=10s --namespace=" + appNamespace + " -f - "								//滚动更新
 
 	Logger.Debug("The cmd is: %v", cmd)
 	go util.ExecCommand(cmd)
