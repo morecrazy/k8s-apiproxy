@@ -155,23 +155,53 @@ func GetImageTags(c * gin.Context) {
 
 	latestVersionId := ""
 	latestVersionNumber := 0
-	for key,_ := range res {
-		Logger.Debug("The tag is: %v", key)
-		version := util.Substr(key, 1, len(key))
-		versionNumber, err := strconv.Atoi(version)
-		if err != nil {
-			Logger.Error("invalid tag")
-			continue;
-		}
-		if versionNumber > latestVersionNumber {
-			latestVersionNumber = versionNumber
+	versionNames := []string{}
+	onlineVersionNames := []string{}
+
+	for version, _ := range res {
+		if strings.Contains(version, "online") {
+			onlineVersionNames = append(onlineVersionNames, version)
+		} else {
+			versionNames = append(versionNames, version)
 		}
 	}
 
-	if latestVersionNumber != 0 {
-		latestVersion := "v" + strconv.Itoa(latestVersionNumber)
-		latestVersionId = res[latestVersion].(string)
+	if len(onlineVersionNames) != 0 {
+		for _, item := range onlineVersionNames {
+			version := util.Substr(item, 8, len(item))
+			versionNumber, err := strconv.Atoi(version)
+			if err != nil {
+				Logger.Error("invalid tag")
+				continue;
+			}
+			if versionNumber > latestVersionNumber {
+				latestVersionNumber = versionNumber
+			}
+		}
+		if latestVersionNumber != 0 {
+			latestVersion := "online_v" + strconv.Itoa(latestVersionNumber)
+			latestVersionId = res[latestVersion].(string)
+		}
+
+	} else {
+		for _, item := range versionNames {
+			Logger.Debug("The tag is: %v", item)
+			version := util.Substr(item, 1, len(item))
+			versionNumber, err := strconv.Atoi(version)
+			if err != nil {
+				Logger.Error("invalid tag")
+				continue;
+			}
+			if versionNumber > latestVersionNumber {
+				latestVersionNumber = versionNumber
+			}
+		}
+		if latestVersionNumber != 0 {
+			latestVersion := "v" + strconv.Itoa(latestVersionNumber)
+			latestVersionId = res[latestVersion].(string)
+		}
 	}
+
 	if res["latest"] != nil {
 		latestVersionId = res["latest"].(string)
 	}
