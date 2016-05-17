@@ -3,6 +3,7 @@ package httpsrv
 import (
 	"third/gin"
 	"backend/common"
+	"fmt"
 )
 
 var kubeApiserverPath = ""
@@ -11,6 +12,22 @@ var registryPath = ""
 var registryPort = ""
 var skyDNSPath = ""
 var skyDNSPort = ""
+
+func respondWithError(code int, message string, c *gin.Context) {
+	resp := map[string]interface{}{"state": 1, "msg": message}
+
+	c.JSON(code, resp)
+	c.Abort()
+}
+
+func AccountAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		//sessionId, _ := c.Request.Cookie("login_session_id")
+		clientIP := c.Request.Header.Get("HTTP_X_REAL_IP")
+		fmt.Printf("the client ip is %v\n", clientIP)
+		c.Next()
+	}
+}
 
 func CORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -41,7 +58,8 @@ func StartServer() {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(CORSMiddleware())
-	//router.Use(common.Log())
+	router.Use(AccountAuthMiddleware())
+
 	SetupRoutes(router)
 	router.Run(common.Config.Listen)
 }
