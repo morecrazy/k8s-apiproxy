@@ -23,7 +23,8 @@ func respondWithError(code int, message string, c *gin.Context) {
 func AccountAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		//sessionId, _ := c.Request.Cookie("login_session_id")
-		clientIP := c.Request.Header.Get("X-Real-IP")
+		clientIP := c.Request.RemoteAddr
+
 		fmt.Printf("the client ip is %v\n", clientIP)
 		c.Next()
 	}
