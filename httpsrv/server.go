@@ -51,6 +51,7 @@ func AccountAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		fmt.Printf("the auth response is %v\n", response)
 		bytes := []byte(response)
 		var res map[string]interface{}
 
@@ -69,6 +70,7 @@ func AccountAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		common.Logger.Debug("pass account auth")
 		c.Next()
 	}
 }
