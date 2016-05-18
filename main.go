@@ -14,7 +14,6 @@ const (
 )
 
 var g_conf_file string
-var g_config common.Configure
 
 func init() {
 	const usage = "kubernetes-apiproxy [-c config_file]"
@@ -28,17 +27,20 @@ func main() {
 	flag.Parse()
 
 	if g_conf_file != "" {
-		if err := common.InitConfigFile(g_conf_file, &g_config); err != nil {
+		common.Config = new(common.Configure)
+		if err := common.InitConfigFile(g_conf_file, common.Config); err != nil {
 			fmt.Println("init config err : ", err)
 		}
 	} else {
 		addrs := []string{"http://etcd.in.codoon.com:2379"}
-		if err := common.LoadCfgFromEtcd(addrs, "kubernetes-apiproxy", &g_config); err != nil {
+		common.Config = new(common.Configure)
+		if err := common.LoadCfgFromEtcd(addrs, "kubernetes-apiproxy", common.Config); err != nil {
 			fmt.Println("init config from etcd err : ", err)
 		}
 	}
 
-	g_logger, err := common.InitLogger(g_config.LogFile, "%{color}%{time:2006-01-02 15:04:05.000} %{level:.4s} %{id:03x} ▶ %{shortfunc}%{color:reset} %{message}")
+	var err error
+	common.Logger, err = common.InitLogger(common.Config.LogFile, "%{color}%{time:2006-01-02 15:04:05.000} %{level:.4s} %{id:03x} ▶ %{shortfunc}%{color:reset} %{message}")
 
 	if err != nil {
 		fmt.Println("init log error")
@@ -52,7 +54,7 @@ func main() {
 	//	return
 	//}
 
-	g_logger.Debug("Start server...")
-	httpsrv.InitExternalConfig(g_config)
+	common.Logger.Debug("Start server...")
+	httpsrv.InitExternalConfig(common.Config)
 	httpsrv.StartServer()
 }

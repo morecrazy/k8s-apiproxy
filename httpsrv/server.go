@@ -83,7 +83,7 @@ func CORSMiddleware() gin.HandlerFunc {
 	}
 }
 
-func InitExternalConfig(config common.Configure)  {
+func InitExternalConfig(config *common.Configure)  {
 	kubeApiserverPath = config.External["kubeApiserverPath"]
 	kubeApiserverPort = config.External["kubeApiserverPort"]
 	registryPath = config.External["registryPath"]
