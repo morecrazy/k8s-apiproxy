@@ -7,7 +7,6 @@ import (
 	"backend/common"
 	"runtime"
 	"codoon_ops/kubernetes-apiproxy/httpsrv"
-	//"zhanghan/slb/api"
 )
 
 const (
@@ -17,6 +16,10 @@ const (
 var g_conf_file string
 var g_config common.Configure
 
+func init() {
+	const usage = "kubernetes-apiproxy [-c config_file]"
+	flag.StringVar(&g_conf_file, "c", "", usage)
+}
 
 func main() {
 	//set runtime variable
@@ -24,14 +27,15 @@ func main() {
 	//get flag
 	flag.Parse()
 
-	if g_conf_file == "" {
-		g_conf_file = DEFAULT_CONF_FILE
-	}
-
-	err := common.InitConfigFile(g_conf_file, &g_config)
-	if err != nil {
-		fmt.Println(err)
-		return
+	if g_conf_file != "" {
+		if err := common.InitConfigFile(g_conf_file, &g_config); err != nil {
+			fmt.Println("init config err : ", err)
+		}
+	} else {
+		addrs := []string{"http://etcd.in.codoon.com:2379"}
+		if err := common.LoadCfgFromEtcd(addrs, "kubernetes-apiproxy", &g_config); err != nil {
+			fmt.Println("init config from etcd err : ", err)
+		}
 	}
 
 	g_logger, err := common.InitLogger(g_config.LogFile, "%{color}%{time:2006-01-02 15:04:05.000} %{level:.4s} %{id:03x} ▶ %{shortfunc}%{color:reset} %{message}")
@@ -47,7 +51,6 @@ func main() {
 		return
 	}
 
-	//api.SetAppInfo("KM0BWn5yGIjiYW3S", "VIECii4MYVv7QEVl5QDJbAxGH6nqH0")
 	g_logger.Debug("Start server...")
 	httpsrv.InitExternalConfig(g_config)
 	httpsrv.StartServer()

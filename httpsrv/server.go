@@ -3,7 +3,9 @@ package httpsrv
 import (
 	"third/gin"
 	"backend/common"
-	"fmt"
+	"strings"
+	"encoding/json"
+	"net/http"
 )
 
 var kubeApiserverPath = ""
@@ -22,10 +24,44 @@ func respondWithError(code int, message string, c *gin.Context) {
 
 func AccountAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		//sessionId, _ := c.Request.Cookie("login_session_id")
-		clientIP := c.Request.RemoteAddr
+		var url string = "https://login_in.codoon.com/check_session"
+		sessionCookie, _ := c.Request.Cookie("login_session_id")
+		sessionId := sessionCookie.Value
+		clientAddr := c.Request.RemoteAddr
+		clients := strings.Split(clientAddr, ":")
+		clientIP := clients[0]
+		sourceType := ""
 
-		fmt.Printf("the client ip is %v\n", clientIP)
+		reqJson := map[string]string{
+			"session_id": sessionId,
+			"client_ip": clientIP,
+			"source_type": sourceType,
+		}
+
+		code, response, err := common.SendFormRequest("GET", url, reqJson)
+		if err != nil {
+			respondWithError(code, "access login.in.codoon.com failed", c)
+			return
+		}
+
+		bytes := []byte(response)
+		var res map[string]interface{}
+
+		if err := json.Unmarshal(bytes, &res); err != nil {
+			respondWithError(code, "unmarsh response json failed", c)
+			return
+		}
+
+		if errcode := res["errcode"].(int); errcode != 0 {
+			c.JSON(http.StatusOK, gin.H{"status": map[string]interface{}{
+				"state": 5,
+				"msg": "please login",
+			},"data": map[string]interface{}{
+				"rd_url": "https://login_in.codoon.com?next=授权",
+			}})
+			return
+		}
+
 		c.Next()
 	}
 }
