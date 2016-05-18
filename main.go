@@ -45,11 +45,12 @@ func main() {
 		return
 	}
 
-	err = httpsrv.InitDBPool(g_config.MysqlSetting["KubeMysqlSetting"])
-	if err != nil {
-		fmt.Println("init db error")
-		return
-	}
+	//暂时不需要DB
+	//err = httpsrv.InitDBPool(g_config.MysqlSetting["KubeMysqlSetting"])
+	//if err != nil {
+	//	fmt.Println("init db error")
+	//	return
+	//}
 
 	g_logger.Debug("Start server...")
 	httpsrv.InitExternalConfig(g_config)
