@@ -14,6 +14,8 @@ var registryPath = ""
 var registryPort = ""
 var skyDNSPath = ""
 var skyDNSPort = ""
+var loginUrl = ""
+var redirectUrl = "https://login_in.codoon.com?next=授权"
 
 func respondWithError(code int, message string, c *gin.Context) {
 	resp := map[string]interface{}{"state": 1, "msg": message}
@@ -24,7 +26,7 @@ func respondWithError(code int, message string, c *gin.Context) {
 
 func AccountAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var url string = "https://login_in.codoon.com/check_session"
+		//var loginUrl string = "https://login_in.codoon.com/check_session"
 		sessionCookie, _ := c.Request.Cookie("login_session_id")
 		sessionId := sessionCookie.Value
 		clientAddr := c.Request.RemoteAddr
@@ -38,7 +40,7 @@ func AccountAuthMiddleware() gin.HandlerFunc {
 			"source_type": sourceType,
 		}
 
-		code, response, err := common.SendFormRequest("GET", url, reqJson)
+		code, response, err := common.SendFormRequest("GET", loginUrl, reqJson)
 		if err != nil {
 			respondWithError(code, "access login.in.codoon.com failed", c)
 			return
@@ -57,7 +59,7 @@ func AccountAuthMiddleware() gin.HandlerFunc {
 				"state": 5,
 				"msg": "please login",
 			},"data": map[string]interface{}{
-				"rd_url": "https://login_in.codoon.com?next=授权",
+				"rd_url": redirectUrl,
 			}})
 			return
 		}
@@ -88,6 +90,7 @@ func InitExternalConfig(config common.Configure)  {
 	registryPort = config.External["registryPort"]
 	skyDNSPath = config.External["SkyDNSPath"]
 	skyDNSPort = config.External["SkyDNSPort"]
+	loginUrl = config.External["loginPath"]
 }
 
 func StartServer() {
