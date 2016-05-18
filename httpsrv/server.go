@@ -15,6 +15,7 @@ var registryPort = ""
 var skyDNSPath = ""
 var skyDNSPort = ""
 var loginUrl = ""
+var sourceType = ""
 var redirectUrl = "https://login_in.codoon.com?next=授权"
 
 func respondWithError(code int, message string, c *gin.Context) {
@@ -32,7 +33,6 @@ func AccountAuthMiddleware() gin.HandlerFunc {
 		clientAddr := c.Request.RemoteAddr
 		clients := strings.Split(clientAddr, ":")
 		clientIP := clients[0]
-		sourceType := ""
 
 		reqJson := map[string]string{
 			"session_id": sessionId,
@@ -91,6 +91,7 @@ func InitExternalConfig(config common.Configure)  {
 	skyDNSPath = config.External["SkyDNSPath"]
 	skyDNSPort = config.External["SkyDNSPort"]
 	loginUrl = config.External["loginPath"]
+	sourceType = config.External["sourceType"]
 }
 
 func StartServer() {
