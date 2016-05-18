@@ -6,6 +6,7 @@ import (
 	"strings"
 	"encoding/json"
 	"net/http"
+	"fmt"
 )
 
 var kubeApiserverPath = ""
@@ -28,12 +29,16 @@ func respondWithError(code int, message string, c *gin.Context) {
 func AccountAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		//var loginUrl string = "https://login_in.codoon.com/check_session"
+		sessionId := ""
 		sessionCookie, _ := c.Request.Cookie("login_session_id")
-		sessionId := sessionCookie.Value
+		if sessionCookie != nil {
+			sessionId = sessionCookie.Value
+		}
 		clientAddr := c.Request.RemoteAddr
 		clients := strings.Split(clientAddr, ":")
 		clientIP := clients[0]
 
+		fmt.Printf("the session id is %v, client ip is %v, and source_type is %v\n", sessionId, clientIP, sourceType)
 		reqJson := map[string]string{
 			"session_id": sessionId,
 			"client_ip": clientIP,
