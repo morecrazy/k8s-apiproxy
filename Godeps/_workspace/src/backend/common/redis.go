@@ -298,21 +298,20 @@ func (cache *Cache) Del(key string) error {
 	return err
 }
 
-func (cache *Cache) Exists(key string) bool {
+func (cache *Cache) Exists(key string) (bool, error) {
 	conn := cache.RedisPool().Get()
 	defer conn.Close()
-	exists, err := redis.Bool(conn.Do("EXISTS", key))
-	if err != nil {
+	var flag bool
+	exists, err := redis.Int(conn.Do("EXISTS", key))
+	if err != nil && !strings.Contains(err.Error(), "nil returned") {
 		err = NewInternalError(CacheErrCode, err)
 		Logger.Error(err.Error())
-		return false
+		return flag, err
 	}
-
-	if exists {
-		return true
-	} else {
-		return false
+	if exists == 1 {
+		flag = true
 	}
+	return flag, nil
 }
 
 func (cache *Cache) Zrange(key string, start, end int, withscores bool) ([]string, error) {
@@ -438,6 +437,16 @@ func (cache *Cache) Rpush(key string, value interface{}) error {
 	return err
 }
 
+func (cache *Cache) Rpop(key string) (value interface{}, err error) {
+	conn := cache.RedisPool().Get()
+	defer conn.Close()
+	value, err = conn.Do("RPOP", key)
+	if nil != err && !strings.Contains(err.Error(), "nil returned") {
+		err = NewInternalError(CacheErrCode, err)
+	}
+	return
+}
+
 func (cache *Cache) RpushBatch(keys []interface{}) error {
 	conn := cache.RedisPool().Get()
 	defer conn.Close()
@@ -480,4 +489,35 @@ func (cache *Cache) Publish(channel, msg string) error {
 	defer conn.Close()
 	_, err := conn.Do("PUBLISH", channel, msg)
 	return err
+}
+
+func (cache *Cache) Llen(key string) (key_len int, err error) {
+	conn := cache.RedisPool().Get()
+	defer conn.Close()
+	key_len, err = redis.Int(conn.Do("LLEN", key))
+	return
+}
+
+//Set the value of key ``name`` to ``value`` that expires in ``time`` seconds
+func (cache *Cache) Setex(name string, value, time int64) error {
+	conn := cache.RedisPool().Get()
+	defer conn.Close()
+	_, err := conn.Do("SETEX", name, time, value)
+	return err
+}
+
+func (cache *Cache) SetTimeLock(id string, time_out int64) (flag bool, err error) {
+	key := fmt.Sprintf("tlock:%s", id)
+	is_exist, err := cache.Exists(key)
+	if err != nil {
+		return
+	}
+	if is_exist {
+		return
+	}
+	if err = cache.Setex(key, 0, time_out); err != nil {
+		return
+	}
+	flag = true
+	return
 }

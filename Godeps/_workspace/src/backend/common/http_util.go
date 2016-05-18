@@ -1,10 +1,12 @@
 package common
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -13,7 +15,6 @@ import (
 	"third/gin"
 	"third/httprouter"
 	"time"
-	"bytes"
 )
 
 func CodoonGetHeader(c *gin.Context) {
@@ -79,15 +80,30 @@ func CompareVersion(version_a string, version_b string, oper int) (bool, error) 
 	}
 	int_list_a := []int{}
 	int_list_b := []int{}
+
+	if version_a == "" {
+		version_a = "0.0.0"
+	}
+
+	if version_b == "" {
+		version_b = "0.0.0"
+	}
+
 	err := StringToIntList(version_a, &int_list_a)
 	if err != nil {
 		fmt.Errorf("Version format error[version:%v]", version_a)
 		return false, err
 	}
+	for len(int_list_a) < 3 {
+		int_list_a = append(int_list_a, 0)
+	}
 	err = StringToIntList(version_b, &int_list_b)
 	if err != nil {
 		fmt.Errorf("Version format error[version:%v]", version_b)
 		return false, err
+	}
+	for len(int_list_b) < 3 {
+		int_list_b = append(int_list_b, 0)
 	}
 	if oper == 0 {
 		for i := 0; i < len(int_list_a); i++ {
@@ -403,7 +419,7 @@ func SendJsonRequest(http_method, urls string, req_body interface{}) (int, strin
 	return SendRequest(http_method, urls, req_body, nil, nil)
 }
 
-func SendRawRequest(http_method, urls string, req_raw interface{})(int, string, error) {
+func SendRawRequest(http_method, urls string, req_raw interface{}) (int, string, error) {
 	return SendRequest(http_method, urls, nil, nil, req_raw)
 }
 
@@ -418,6 +434,53 @@ func SMSSendRequest(http_method, urls string, req_body map[string]string) (int, 
 	}
 
 	return code, result, err
+}
+
+func SendRequestSecure(http_method, urls string, req_form map[string]string, secret string) (int, string, error) {
+	tr := &http.Transport{
+		DisableKeepAlives: true,
+	}
+	client := &http.Client{Transport: tr}
+	form := url.Values{}
+	var err error = nil
+	var request *http.Request
+	var body []byte
+
+	if nil != req_form {
+		for key, value := range req_form {
+			form.Set(key, value)
+		}
+		if "GET" == http_method {
+			request, _ = http.NewRequest(http_method, urls+"?"+form.Encode(), nil)
+		} else {
+			request, _ = http.NewRequest(http_method, urls, strings.NewReader(form.Encode()))
+		}
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		request.Header.Set("Authorization", secret)
+	}
+
+	Logger.Debug("request %v", request)
+
+	response, err := client.Do(request)
+	if nil != err {
+		err = NewInternalError(HttpErrCode, err)
+		Logger.Error("send request err :%v", err)
+		return http.StatusNotFound, "", err
+	}
+
+	if response.StatusCode == http.StatusOK {
+		defer response.Body.Close()
+		body, err = ioutil.ReadAll(response.Body)
+		if nil == err {
+			Logger.Debug("body:%v", string(body))
+		}
+		return response.StatusCode, string(body), err
+	} else {
+		err = NewInternalError(HttpErrCode, fmt.Errorf("http code :%d", response.StatusCode))
+		Logger.Error("send request err :%v", err)
+		return response.StatusCode, "", err
+	}
+
 }
 
 var string_key map[string]int = map[string]int{
@@ -459,6 +522,42 @@ func ForwardHttpToRpc(c *gin.Context, client *RpcClient, method string, args map
 	}
 
 	return nil
+}
+
+func HttpRequest(method, addr string, params map[string]string) ([]byte, error) {
+	form := url.Values{}
+	for k, v := range params {
+		form.Set(k, v)
+	}
+
+	var request *http.Request
+	var err error = nil
+	if method == "GET" || method == "DELETE" {
+		request, err = http.NewRequest(method, addr+"?"+form.Encode(), nil)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		request, err = http.NewRequest(method, addr, strings.NewReader(form.Encode()))
+		if err != nil {
+			return nil, err
+		}
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+
+	client := &http.Client{}
+	response, err := client.Do(request)
+	if nil != err {
+		log.Printf("httpRequest: Do request (%+v) error:%v", request, err)
+		return nil, err
+	}
+	defer response.Body.Close()
+	data, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		log.Printf("httpRequest: read response error:%v", err)
+		return nil, err
+	}
+	return data, nil
 }
 
 func GinRecovery() gin.HandlerFunc {

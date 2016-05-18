@@ -4,7 +4,7 @@
 	"Deps": [
 		{
 			"ImportPath": "backend/common",
-			"Rev": "128a4a8008eac3b57b895504aa6c869f50eb973b"
+			"Rev": "5ee79c9d1b75e68cf97064c563c1d2bf6675af96"
 		},
 		{
 			"ImportPath": "backend/jsonrpc",
@@ -55,8 +55,8 @@
 		},
 		{
 			"ImportPath": "third/go-logging",
-			"Comment": "1.0.0.1",
-			"Rev": "353df615b724b8d9afc35b9feab1f05b23e5cc6b"
+			"Comment": "1.0.0.1-12-gaf2f85d",
+			"Rev": "af2f85d115da56f8c829765e8be7df1828262018"
 		},
 		{
 			"ImportPath": "third/go-sql-driver/mysql",
