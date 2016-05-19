@@ -68,6 +68,7 @@ func AccountAuthMiddleware() gin.HandlerFunc {
 			},"data": map[string]interface{}{
 				"rd_url": redirectUrl,
 			}})
+			c.Abort()
 			return
 		}
 
