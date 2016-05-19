@@ -60,15 +60,14 @@ func AccountAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		fmt.Printf("the errcode is %v\n", res["errcode"].(int))
-		if errcode := res["errcode"].(int); errcode != 0 {
+		fmt.Printf("the errcode is %v\n", res["errcode"].(float64))
+		if errcode := res["errcode"].(float64); errcode != 0 {
 			c.JSON(http.StatusOK, gin.H{"status": map[string]interface{}{
 				"state": 5,
 				"msg": "please login",
 			},"data": map[string]interface{}{
 				"rd_url": redirectUrl,
 			}})
-			c.Abort()
 			return
 		}
 
