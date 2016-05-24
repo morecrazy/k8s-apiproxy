@@ -40,8 +40,8 @@ func main() {
 	}
 
 	var err error
-	common.Logger, err = common.InitLogger(common.Config.LogFile, "%{color}%{time:2006-01-02 15:04:05.000} %{level:.4s} %{id:03x} ▶ %{shortfunc}%{color:reset} %{message}")
-
+	//common.Logger, err = common.InitLogger(common.Config.LogFile, "%{color}%{time:2006-01-02 15:04:05.000} %{level:.4s} %{id:03x} ▶ %{shortfunc}%{color:reset} %{message}")
+	common.Logger, err = common.InitLogger("kubernetes-apiproxy")
 	if err != nil {
 		fmt.Println("init log error")
 		return

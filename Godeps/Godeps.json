@@ -4,7 +4,7 @@
 	"Deps": [
 		{
 			"ImportPath": "backend/common",
-			"Rev": "5ee79c9d1b75e68cf97064c563c1d2bf6675af96"
+			"Rev": "d6aee77700c4f75977f2b13a31f9c75cedac00e1"
 		},
 		{
 			"ImportPath": "backend/jsonrpc",
@@ -22,6 +22,10 @@
 		{
 			"ImportPath": "third/context",
 			"Rev": "e8775ff78ce91dcee9661831ab97ede324370f65"
+		},
+		{
+			"ImportPath": "third/crc32",
+			"Rev": "19b0b332c9e4516a6370a0456e6182c3b5036720"
 		},
 		{
 			"ImportPath": "third/etcd-client",
@@ -59,6 +63,10 @@
 			"Rev": "af2f85d115da56f8c829765e8be7df1828262018"
 		},
 		{
+			"ImportPath": "third/go-resiliency/breaker",
+			"Rev": "b86b1ec0dd4209a588dc1285cdd471e73525c0b3"
+		},
+		{
 			"ImportPath": "third/go-sql-driver/mysql",
 			"Comment": "v1.0.0.0",
 			"Rev": "efbc802f3feb460b85a85ab8f31f4cd60dd32b49"
@@ -77,9 +85,17 @@
 			"Rev": "6ab31338b6fe01c5b1b14d478333a9285fda638d"
 		},
 		{
+			"ImportPath": "third/kafka",
+			"Rev": "3bbdb7901b8e2e9ef5553de829fadc34f24945d6"
+		},
+		{
 			"ImportPath": "third/pq/hstore",
 			"Comment": "1.0.0.0",
 			"Rev": "b75b54a6bfbc58764ab696a6cb5f6e7fe3f980ad"
+		},
+		{
+			"ImportPath": "third/queue",
+			"Rev": "ded5959c0d4e360646dc9e9908cff48666781367"
 		},
 		{
 			"ImportPath": "third/raven-go",
@@ -94,6 +110,14 @@
 			"ImportPath": "third/redigo/redis",
 			"Comment": "1.0.0.0-2-g29e6887",
 			"Rev": "29e68875545399f1d96d751398b88d05cb55783b"
+		},
+		{
+			"ImportPath": "third/snappy",
+			"Rev": "34040df428fe3cde147c12c25e82bffd1189ae10"
+		},
+		{
+			"ImportPath": "third/spew",
+			"Rev": "bac5037f35387577a1988dbed21f3c4c9d90d801"
 		},
 		{
 			"ImportPath": "zhanghan/slb/api",
