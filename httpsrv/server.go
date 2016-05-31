@@ -35,7 +35,7 @@ func AccountAuthMiddleware() gin.HandlerFunc {
 			sessionId = sessionCookie.Value
 		}
 
-		clientIP := c.Request.Header.Get("remote_addr")
+		clientIP := c.Request.Header.Get("X-Real-IP")
 		/**
 		clientAddr := c.Request.RemoteAddr
 		clients := strings.Split(clientAddr, ":")
