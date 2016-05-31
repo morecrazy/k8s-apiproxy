@@ -3,7 +3,6 @@ package httpsrv
 import (
 	"third/gin"
 	"backend/common"
-	"strings"
 	"encoding/json"
 	"net/http"
 	"fmt"
@@ -35,9 +34,13 @@ func AccountAuthMiddleware() gin.HandlerFunc {
 		if sessionCookie != nil {
 			sessionId = sessionCookie.Value
 		}
+
+		clientIP := c.Request.Header.Get("Remote_addr")
+		/**
 		clientAddr := c.Request.RemoteAddr
 		clients := strings.Split(clientAddr, ":")
 		clientIP := clients[0]
+		**/
 
 		fmt.Printf("the session id is %v, client ip is %v, and source_type is %v\n", sessionId, clientIP, sourceType)
 		reqJson := map[string]string{
