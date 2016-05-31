@@ -7,14 +7,14 @@ import (
 func SetupRoutes(router *gin.Engine) {
 	image_group := router.Group("/api/v1/image")
 	{
-		image_group.GET("/list", GetImagesList) 		//获取镜像列表
+		image_group.GET("/list", GetImagesList) 		//获取镜像列表(registry v2版本接口可以实现)
 		image_group.POST("/delete", DeleteImage)		//删除镜像
 
 	}
 	tag_group := router.Group("/api/v1/tag")
 	{
-		tag_group.GET("/list", GetImageTags)		//获取镜像版本列表
-		tag_group.POST("/delete", DeleteTag)		//删除镜像版本
+		tag_group.GET("/list", GetImageTags)		//获取镜像版本列表(registry v2版本接口可以实现)
+		tag_group.POST("/delete", DeleteTag)		//删除镜像版本(registry v2版本接口可以实现)
 		tag_group.POST("/latest", UpdateImageTag)		//设置镜像版本为latest
 	}
 	cluster_group := router.Group("/api/v1/cluster")

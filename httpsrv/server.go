@@ -108,7 +108,7 @@ func StartServer() {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(CORSMiddleware())
-	//router.Use(AccountAuthMiddleware())
+	router.Use(AccountAuthMiddleware())
 
 	SetupRoutes(router)
 	router.Run(common.Config.Listen)
