@@ -18,6 +18,7 @@ var skyDNSPort = ""
 var loginUrl = ""
 var sourceType = ""
 var redirectUrl = "https://login_in.codoon.com?next=授权"
+var authLogin = ""
 
 func respondWithError(code int, message string, c *gin.Context) {
 	resp := map[string]interface{}{"state": 1, "msg": message}
@@ -101,6 +102,7 @@ func InitExternalConfig(config *common.Configure)  {
 	skyDNSPort = config.External["SkyDNSPort"]
 	loginUrl = config.External["loginPath"]
 	sourceType = config.External["sourceType"]
+	authLogin = config.External["authLogin"]
 }
 
 func StartServer() {
@@ -108,8 +110,9 @@ func StartServer() {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(CORSMiddleware())
-	router.Use(AccountAuthMiddleware())
-
+	if authLogin == "true" {
+		router.Use(AccountAuthMiddleware())
+	}
 	SetupRoutes(router)
 	router.Run(common.Config.Listen)
 }
