@@ -15,6 +15,7 @@ import (
 	"errors"
 	"third/gorm"
 	"backend/common/protocol"
+	"codoon_ops/kubernetes-apiproxy/util/set"
 )
 
 var KubeDb *gorm.DB
@@ -38,7 +39,7 @@ type Data struct {
 }
 
 func GetImagesList(c * gin.Context) {
-	postFix := "/v1/search"
+	postFix := "/v2/_catalog"
 	url := "http://" + registryPath + registryPort + postFix
 	statusCode, response, err := SendRawRequest("GET", url, nil)
 	Logger.Debug("statusCode: %d", statusCode)
@@ -64,14 +65,13 @@ func GetImagesList(c * gin.Context) {
 		c.JSON(http.StatusInternalServerError, s)
 	}
 
-	list := res["results"].([]interface{})
+	list := res["repositories"].([]interface{})
 
 	r.Status.State = 0
 	r.Status.Msg = "ok"
 	ret_list := []interface{}{}
 	for _, value := range list {
-		item := value.(map[string]interface{})
-		name := item["name"].(string)
+		name := value.(string)
 		mirror := registryPath + "/" + name
 		ret_list = append(ret_list, map[string]interface{}{
 			"name":     name,
@@ -123,8 +123,8 @@ func DeleteImage(c * gin.Context) {
 func GetImageTags(c * gin.Context) {
 	name := c.Query("name")
 
-	postFix := "/v1/repositories"
-	url := "http://" + registryPath + registryPort + postFix + "/" + name + "/tags"
+	postFix := "/v2"
+	url := "http://" + registryPath + registryPort + postFix + "/" + name + "/tags/list"
 	statusCode, response, err := SendRawRequest("GET", url, nil)
 	Logger.Debug("statusCode: %d", statusCode)
 	Logger.Debug("repsonse: %s", response)
@@ -153,12 +153,18 @@ func GetImageTags(c * gin.Context) {
 	r.Status.Msg = "ok"
 	ret_list := []interface{}{}
 
-	latestVersionId := ""
+	latestVersion := "latest"
 	latestVersionNumber := 0
 	versionNames := []string{}
 	onlineVersionNames := []string{}
+	tagList := []interface{}{}
+	if res["tags"] != nil {
+		tagList = res["tags"].([]interface{})
+	}
 
-	for version, _ := range res {
+	//兼容新老版本的tag命名方式,新命名:online_vXXX,老命名:vXXX
+	for _, item := range tagList {
+		version := item.(string)
 		if strings.Contains(version, "online") {
 			onlineVersionNames = append(onlineVersionNames, version)
 		} else {
@@ -179,8 +185,7 @@ func GetImageTags(c * gin.Context) {
 			}
 		}
 		if latestVersionNumber != 0 {
-			latestVersion := "online_v" + strconv.Itoa(latestVersionNumber)
-			latestVersionId = res[latestVersion].(string)
+			latestVersion = "online_v" + strconv.Itoa(latestVersionNumber)
 		}
 
 	} else {
@@ -197,22 +202,19 @@ func GetImageTags(c * gin.Context) {
 			}
 		}
 		if latestVersionNumber != 0 {
-			latestVersion := "v" + strconv.Itoa(latestVersionNumber)
-			latestVersionId = res[latestVersion].(string)
+			latestVersion = "v" + strconv.Itoa(latestVersionNumber)
 		}
 	}
 
-	if res["latest"] != nil {
-		latestVersionId = res["latest"].(string)
-	}
-	for key, value := range res {
+	for _, item := range tagList {
+		value := item.(string)
 		var latest = false
-		if value == latestVersionId {
+		if value == latestVersion {
 			latest = true
 		}
 		ret_list = append(ret_list, map[string]interface{}{
-			"commit":    value,
-			"tag":  key,
+			"commit":   "",
+			"tag":  value,
 			"is_latest": latest,
 		})
 	}
@@ -229,12 +231,11 @@ func DeleteTag(c * gin.Context) {
 	name := requestData["name"].(string)
 	tag := requestData["tag"].(string)
 
-	postFix := "/v1/repositories"
-	url := "http://" + registryPath + registryPort + postFix + "/" + name + "/tags" + "/" + tag
+	//获取digest
+	postFix := "/v2"
+	url := "http://" + registryPath + registryPort + postFix + "/" + name + "/manifests" + "/" + tag
 	Logger.Debug("url: %v", url)
-	statusCode, response, err := SendRawRequest("DELETE", url, nil)
-	Logger.Debug("statusCode: %d", statusCode)
-	Logger.Debug("repsonse: %s", response)
+	statusCode, response, err := SendRawRequest("GET", url, nil)
 
 	s := new(StatusResp)			//返回状态结构体
 
@@ -245,15 +246,43 @@ func DeleteTag(c * gin.Context) {
 		return
 	}
 
-	if response == "true" {
-		s.Status.State = 0
-		s.Status.Msg = "OK"
-		c.JSON(statusCode, s)
-	} else {
+	bytes := []byte(response)
+	var res map[string]interface{}
+
+	err = json.Unmarshal(bytes, &res)
+	if err != nil {
 		s.Status.State = 1
-		s.Status.Msg = "Wrong"
-		c.JSON(statusCode, s)
+		s.Status.Msg = err.Error()
+		c.JSON(http.StatusInternalServerError, s)
 	}
+
+	blobs := set.New()
+	fs := res["fsLayers"].([]interface{})
+	for _, item := range fs {
+		value := item.(map[string]interface{})
+		blobs.Add(value["blobSum"].(string))
+	}
+
+	blobList := blobs.List()
+	//遍历层数,依次删除
+	for _, item := range blobList {
+		postFix := "/v2"
+		url := "http://" + registryPath + registryPort + postFix + "/" + name + "/manifests" + "/" + item.(string)
+		Logger.Debug("url: %v", url)
+		statusCode, _, err := SendRawRequest("DELETE", url, nil)
+
+		s := new(StatusResp)			//返回状态结构体
+		if statusCode != http.StatusAccepted {
+			s.Status.State = 1
+			s.Status.Msg = err.Error()
+			c.JSON(statusCode, s)
+			return
+		}
+	}
+
+	s.Status.State = 0
+	s.Status.Msg = "OK"
+	c.JSON(statusCode, s)
 }
 
 func UpdateImageTag (c * gin.Context) {
