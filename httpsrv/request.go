@@ -303,7 +303,6 @@ func GetServiceConfig(c * gin.Context) {
 		"state": 0,
 		"msg": "ok",
 	}
-
 	r := map[string]interface{}{
 		"status": state,
 		"data": data,
