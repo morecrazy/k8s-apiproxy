@@ -7,28 +7,24 @@ import (
 	"fmt"
 	. "backend/common"
 	"strings"
-	"codoon_ops/kubernetes-apiproxy/util/set"
 	"backend/common/protocol"
+	"codoon_ops/kubernetes-apiproxy/util/set"
 )
 
 func GetRuntimeEnv() string {
 	return os.Getenv("GOENV")
 }
 
-func run(command string) {
-	cmd := exec.Command("/bin/sh", "-c", command)
-	_, err := cmd.Output()
+func Run(command , appName, appNamespace string) error {
+	_, err := ExecCommand(command)
+	kubeCmd := new(KubeCmdImpl)
+	fetcher := new(KubeResponseFetcher)
+	go RegisterDNS(appName, appNamespace, kubeCmd, fetcher)
 	if err != nil {
-		panic(err.Error())
+		fmt.Errorf("exec command error: ", err.Error())
+		return err
 	}
-
-	if err := cmd.Start(); err != nil {
-		panic(err.Error())
-	}
-
-	if err := cmd.Wait(); err != nil {
-		panic(err.Error())
-	}
+	return nil
 }
 
 func ExecCommand(command string) ([]byte, error) {
@@ -73,36 +69,6 @@ func ExecCommand(command string) ([]byte, error) {
 		return bytes, err
 	}
 	return bytes, nil
-}
-
-func Substr(str string, start int, length int) string {
-	rs := []rune(str)
-	rl := len(rs)
-	end := 0
-
-	if start < 0 {
-		start = rl - 1 + start
-	}
-	end = start + length
-
-	if start > end {
-		start, end = end, start
-	}
-
-	if start < 0 {
-		start = 0
-	}
-	if start > rl {
-		start = rl
-	}
-	if end < 0 {
-		end = 0
-	}
-	if end > rl {
-		end = rl
-	}
-
-	return string(rs[start:end])
 }
 
 func BytesToDNSRequestJSON(bytes []byte, domain string) (req interface{}) {

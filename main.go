@@ -53,8 +53,7 @@ func main() {
 	//	fmt.Println("init db error")
 	//	return
 	//}
-
-	common.Logger.Debug("Start server...")
+	common.Logger.Info("Start server...")
 	httpsrv.InitExternalConfig(common.Config)
 	httpsrv.StartServer()
 }

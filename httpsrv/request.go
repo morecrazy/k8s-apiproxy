@@ -3,19 +3,11 @@ package httpsrv
 import (
 	"third/gin"
 	"encoding/json"
-	. "backend/common"
 	"net/http"
-	"codoon_ops/kubernetes-apiproxy/util"
-	"zhanghan/slb/api/rest"
-	"strings"
 	"io/ioutil"
-	"time"
 	"strconv"
-	"fmt"
-	"errors"
 	"third/gorm"
-	"backend/common/protocol"
-	"codoon_ops/kubernetes-apiproxy/util/set"
+	"codoon_ops/kubernetes-apiproxy/util"
 )
 
 var KubeDb *gorm.DB
@@ -39,14 +31,12 @@ type Data struct {
 }
 
 func GetImagesList(c * gin.Context) {
-	postFix := "/v2/_catalog"
-	url := "http://" + registryPath + registryPort + postFix
-	statusCode, response, err := SendRawRequest("GET", url, nil)
-	Logger.Debug("statusCode: %d", statusCode)
-	Logger.Debug("repsonse: %s", response)
-
 	s := new(StatusResp)			//返回状态结构体
 	r := new(Response)		//返回结果结构体
+
+	//通过registry接口获取数据信息
+	fetcher := new(util.RegistryResponseFetcher)
+	statusCode, dataList, err := getImagesList(fetcher)
 
 	if statusCode != http.StatusOK {
 		s.Status.State = 1
@@ -54,52 +44,28 @@ func GetImagesList(c * gin.Context) {
 		c.JSON(statusCode, s)
 		return
 	}
-
-	bytes := []byte(response)
-	var res map[string]interface{}
-
-	err = json.Unmarshal(bytes, &res)
 	if err != nil {
 		s.Status.State = 1
 		s.Status.Msg = err.Error()
 		c.JSON(http.StatusInternalServerError, s)
 	}
 
-	list := res["repositories"].([]interface{})
-
 	r.Status.State = 0
 	r.Status.Msg = "ok"
-	ret_list := []interface{}{}
-	for _, value := range list {
-		name := value.(string)
-		mirror := registryPath + "/" + name
-		ret_list = append(ret_list, map[string]interface{}{
-			"name":     name,
-			"mirror":  mirror,
-			"latest": "latest",
-		})
-	}
-	r.Data.List = ret_list
-
+	r.Data.List = dataList
 	c.JSON(http.StatusOK, r)
 }
 
 func DeleteImage(c * gin.Context) {
+	s := new(StatusResp)			//返回状态结构体
 	body, _ := ioutil.ReadAll(c.Request.Body)
 
 	var requestData map[string]interface{}  //获取request body的数据
 	err := json.Unmarshal(body, &requestData)
-
-	//name := c.PostForm("name")
 	name := requestData["name"].(string)
-	postFix := "/v1/repositories"
-	url := "http://" + registryPath + registryPort + postFix + "/" + name + "/"
-	Logger.Debug("url: %v", url)
-	statusCode, response, err := SendRawRequest("DELETE", url, nil)
-	Logger.Debug("statusCode: %d", statusCode)
-	Logger.Debug("repsonse: %s", response)
 
-	s := new(StatusResp)			//返回状态结构体
+	fetcher := new(util.RegistryResponseFetcher)
+	statusCode, response, err := deleteImage(name, fetcher)
 
 	if statusCode != http.StatusOK {
 		s.Status.State = 1
@@ -107,7 +73,6 @@ func DeleteImage(c * gin.Context) {
 		c.JSON(statusCode, s)
 		return
 	}
-
 	if response == "true" {
 		s.Status.State = 0
 		s.Status.Msg = "OK"
@@ -117,20 +82,16 @@ func DeleteImage(c * gin.Context) {
 		s.Status.Msg = "Wrong"
 		c.JSON(statusCode, s)
 	}
-
 }
 
 func GetImageTags(c * gin.Context) {
 	name := c.Query("name")
-
-	postFix := "/v2"
-	url := "http://" + registryPath + registryPort + postFix + "/" + name + "/tags/list"
-	statusCode, response, err := SendRawRequest("GET", url, nil)
-	Logger.Debug("statusCode: %d", statusCode)
-	Logger.Debug("repsonse: %s", response)
-
 	s := new(StatusResp)			//返回状态结构体
 	r := new(Response)		//返回结果结构体
+
+	//通过registry接口获取数据信息
+	fetcher := new(util.RegistryResponseFetcher)
+	statusCode, dataList, err := getImageTags(name, fetcher)
 
 	if statusCode != http.StatusOK {
 		s.Status.State = 1
@@ -138,11 +99,6 @@ func GetImageTags(c * gin.Context) {
 		c.JSON(statusCode, s)
 		return
 	}
-
-	bytes := []byte(response)
-	var res map[string]interface{}
-
-	err = json.Unmarshal(bytes, &res)
 	if err != nil {
 		s.Status.State = 1
 		s.Status.Msg = err.Error()
@@ -151,78 +107,12 @@ func GetImageTags(c * gin.Context) {
 
 	r.Status.State = 0
 	r.Status.Msg = "ok"
-	ret_list := []interface{}{}
-
-	latestVersion := "latest"
-	latestVersionNumber := 0
-	versionNames := []string{}
-	onlineVersionNames := []string{}
-	tagList := []interface{}{}
-	if res["tags"] != nil {
-		tagList = res["tags"].([]interface{})
-	}
-
-	//兼容新老版本的tag命名方式,新命名:online_vXXX,老命名:vXXX
-	for _, item := range tagList {
-		version := item.(string)
-		if strings.Contains(version, "online") {
-			onlineVersionNames = append(onlineVersionNames, version)
-		} else {
-			versionNames = append(versionNames, version)
-		}
-	}
-
-	if len(onlineVersionNames) != 0 {
-		for _, item := range onlineVersionNames {
-			version := util.Substr(item, 8, len(item))
-			versionNumber, err := strconv.Atoi(version)
-			if err != nil {
-				Logger.Error("invalid tag")
-				continue;
-			}
-			if versionNumber > latestVersionNumber {
-				latestVersionNumber = versionNumber
-			}
-		}
-		if latestVersionNumber != 0 {
-			latestVersion = "online_v" + strconv.Itoa(latestVersionNumber)
-		}
-
-	} else {
-		for _, item := range versionNames {
-			Logger.Debug("The tag is: %v", item)
-			version := util.Substr(item, 1, len(item))
-			versionNumber, err := strconv.Atoi(version)
-			if err != nil {
-				Logger.Error("invalid tag")
-				continue;
-			}
-			if versionNumber > latestVersionNumber {
-				latestVersionNumber = versionNumber
-			}
-		}
-		if latestVersionNumber != 0 {
-			latestVersion = "v" + strconv.Itoa(latestVersionNumber)
-		}
-	}
-
-	for _, item := range tagList {
-		value := item.(string)
-		var latest = false
-		if value == latestVersion {
-			latest = true
-		}
-		ret_list = append(ret_list, map[string]interface{}{
-			"commit":   "",
-			"tag":  value,
-			"is_latest": latest,
-		})
-	}
-	r.Data.List = ret_list
+	r.Data.List = dataList
 	c.JSON(http.StatusOK, r)
 }
 
 func DeleteTag(c * gin.Context) {
+	s := new(StatusResp)			//返回状态结构体
 	body, _ := ioutil.ReadAll(c.Request.Body)
 
 	var requestData map[string]interface{}  //获取request body的数据
@@ -232,12 +122,8 @@ func DeleteTag(c * gin.Context) {
 	tag := requestData["tag"].(string)
 
 	//获取digest
-	postFix := "/v2"
-	url := "http://" + registryPath + registryPort + postFix + "/" + name + "/manifests" + "/" + tag
-	Logger.Debug("url: %v", url)
-	statusCode, response, err := SendRawRequest("GET", url, nil)
-
-	s := new(StatusResp)			//返回状态结构体
+	fetcher := new(util.RegistryResponseFetcher)
+	statusCode, _, err := deleteTag(name, tag, fetcher)
 
 	if statusCode != http.StatusOK {
 		s.Status.State = 1
@@ -246,38 +132,10 @@ func DeleteTag(c * gin.Context) {
 		return
 	}
 
-	bytes := []byte(response)
-	var res map[string]interface{}
-
-	err = json.Unmarshal(bytes, &res)
 	if err != nil {
 		s.Status.State = 1
 		s.Status.Msg = err.Error()
 		c.JSON(http.StatusInternalServerError, s)
-	}
-
-	blobs := set.New()
-	fs := res["fsLayers"].([]interface{})
-	for _, item := range fs {
-		value := item.(map[string]interface{})
-		blobs.Add(value["blobSum"].(string))
-	}
-
-	blobList := blobs.List()
-	//遍历层数,依次删除
-	for _, item := range blobList {
-		postFix := "/v2"
-		url := "http://" + registryPath + registryPort + postFix + "/" + name + "/manifests" + "/" + item.(string)
-		Logger.Debug("url: %v", url)
-		statusCode, _, err := SendRawRequest("DELETE", url, nil)
-
-		s := new(StatusResp)			//返回状态结构体
-		if statusCode != http.StatusAccepted {
-			s.Status.State = 1
-			s.Status.Msg = err.Error()
-			c.JSON(statusCode, s)
-			return
-		}
 	}
 
 	s.Status.State = 0
@@ -286,107 +144,58 @@ func DeleteTag(c * gin.Context) {
 }
 
 func UpdateImageTag (c * gin.Context) {
+	s := new(StatusResp)			//返回状态结构体
 	body, _ := ioutil.ReadAll(c.Request.Body)
 
 	var requestData map[string]interface{}  //获取request body的数据
-	err := json.Unmarshal(body, &requestData)
-
-	name := requestData["name"].(string)
-	commit := requestData["commit"].(string)
-
-	Logger.Debug("name is: %v", name)
-	Logger.Debug("commit is: %v", commit)
-
-	commitId := "\"" + commit + "\""
-	postFix := "/v1/repositories"
-	url := "http://" + registryPath + registryPort + postFix + "/" + name + "/tags/latest"
-	statusCode, response, err := SendRawRequest("PUT", url, commitId)
-	Logger.Debug("statusCode: %d", statusCode)
-	Logger.Debug("repsonse: %s", response)
-
-	s := new(StatusResp)			//返回状态结构体
-
-	if statusCode != http.StatusOK {
-		s.Status.State = 1
-		s.Status.Msg = err.Error()
-		c.JSON(statusCode, s)
-		return
-	}
-
-	if response == "true" {
-		s.Status.State = 0
-		s.Status.Msg = "OK"
-		c.JSON(statusCode, s)
-	} else {
-		s.Status.State = 1
-		s.Status.Msg = "Wrong"
-		c.JSON(statusCode, s)
-	}
-}
-
-func GetClusterList(c * gin.Context) {
-	postFix := "/api/v1/nodes"
-	url := "http://" + kubeApiserverPath + kubeApiserverPort + postFix
-	statusCode, response, err := SendRawRequest("GET", url, nil)
-	Logger.Debug("statusCode: %d", statusCode)
-	Logger.Debug("repsonse: %s", response)
-
-	s := new(StatusResp)			//返回状态结构体
-	r := new(Response)		//返回结果结构体
-
-	if statusCode != http.StatusOK {
-		s.Status.State = 1
-		s.Status.Msg = err.Error()
-		c.JSON(statusCode, s)
-		return
-	}
-
-	byte := []byte(response)
-	var res map[string]interface{}
-
-	err = json.Unmarshal(byte, &res)
-	if err != nil {
+	if err := json.Unmarshal(body, &requestData); err != nil {
 		s.Status.State = 1
 		s.Status.Msg = err.Error()
 		c.JSON(http.StatusInternalServerError, s)
 	}
 
-	list := res["items"].([]interface{})
+	/**
+	name := requestData["name"].(string)
+	commit := requestData["commit"].(string)
+	**/
+	s.Status.State = 0
+	s.Status.Msg = "OK"
+	c.JSON(http.StatusOK, s)
+
+}
+
+func GetClusterList(c * gin.Context) {
+	s := new(StatusResp)			//返回状态结构体
+	r := new(Response)		//返回结果结构体
+
+	fetcher := new(util.KubeResponseFetcher)
+	statusCode, dataList, err := getClusterList(fetcher)
+
+	if statusCode != http.StatusOK {
+		s.Status.State = 1
+		s.Status.Msg = err.Error()
+		c.JSON(statusCode, s)
+		return
+	}
+	if err != nil {
+		s.Status.State = 1
+		s.Status.Msg = err.Error()
+		c.JSON(http.StatusInternalServerError, s)
+		return
+	}
 
 	r.Status.State = 0
 	r.Status.Msg = "ok"
-	ret_list := []interface{}{}
-	group_map := map[string]string{}
-
-	for _, value := range list {
-		item := value.(map[string]interface{})
-		metadata := item["metadata"].(map[string]interface{})
-		labels := metadata["labels"].(map[string]interface{})
-		if labels["groupname"] == nil {continue}
-		key := labels["groupname"].(string)
-		group_map[key] = "groupname"
-	}
-
-	for key,_ := range group_map {
-		ret_list = append(ret_list, map[string]interface{}{
-			"env_name":     key,
-		})
-	}
-
-	r.Data.List = ret_list
-
+	r.Data.List = dataList
 	c.JSON(http.StatusOK, r)
 }
 
 func GetServicesList(c * gin.Context) {
-	postFix := "/api/v1/replicationcontrollers"
-	url := "http://" + kubeApiserverPath + kubeApiserverPort + postFix
-	statusCode, response, err := SendRawRequest("GET", url, nil)
-	Logger.Debug("statusCode: %d", statusCode)
-	Logger.Debug("repsonse: %s", response)
-
 	s := new(StatusResp)
 	r := new(Response)
+
+	fetcher := new(util.KubeResponseFetcher)
+	statusCode, dataList, err := getServiceList(fetcher)
 
 	if statusCode != http.StatusOK {
 		s.Status.State = 1
@@ -394,11 +203,6 @@ func GetServicesList(c * gin.Context) {
 		c.JSON(statusCode, s)
 		return
 	}
-
-	bytes := []byte(response)
-	var res map[string]interface{}
-
-	err = json.Unmarshal(bytes, &res)
 	if err != nil {
 		s.Status.State = 1
 		s.Status.Msg = err.Error()
@@ -406,284 +210,31 @@ func GetServicesList(c * gin.Context) {
 		return
 	}
 
-	list := res["items"].([]interface{})
-
 	r.Status.State = 0
 	r.Status.Msg = "ok"
-	ret_list := []interface{}{}
-
-	for _, value := range list {
-		item := value.(map[string]interface{})
-
-		//获取服务名字,命名空间和创建时间
-		metadata := item["metadata"].(map[string]interface{})
-		name := metadata["name"].(string)
-		namespace := metadata["namespace"].(string)
-		createTime := metadata["creationTimestamp"].(string)
-		t, _ := time.Parse(time.RFC3339, createTime)
-		timestamp := fmt.Sprintf("%d-%02d-%02d %02d:%02d:%02d",
-			t.Year(), t.Month(), t.Day(),
-			t.Hour() + 8, t.Minute(), t.Second())
-
-		//获取实例个数
-		spec := item["spec"].(map[string]interface{})
-		replicas := spec["replicas"].(float64)
-
-		//获取服务运行状态
-		state := ""
-		if replicas == 0{
-			state = "stopped"
-		} else if replicas > 0 {
-			state = "running"
-		}
-
-		//获取服务运行环境group
-		template := spec["template"].(map[string]interface{})
-		tSpec := template["spec"].(map[string]interface{})
-		nodeSelector := tSpec["nodeSelector"].(map[string]interface{})
-		groupname := nodeSelector["groupname"].(string)
-
-		//获取实例中的镜像名
-		images := ""
-		containers := tSpec["containers"].([]interface{})
-		for _, value := range containers {
-			item := value.(map[string]interface{})
-			images += item["image"].(string)
-			images += ","
-		}
-
-		//获取所有实例(容器)运行状态
-		status := ""
-		cmd := "kubectl describe rc " + name + " --namespace=" + namespace
-		bytes, err := util.ExecCommand(cmd)
-		if err != nil {
-			s.Status.State = 1
-			s.Status.Msg = err.Error()
-			c.JSON(http.StatusInternalServerError, s)
-			return
-		}
-		lines := strings.Split(string(bytes), "\n")
-		for _, value := range lines {
-			cols := strings.Split(value, "\t")
-			if cols[0] == "Replicas:" {
-				status += cols[1] + " / "
-			} else if cols[0] == "Pods Status:" {
-				status += cols[1]
-			}
- 		}
-
-		//拼接返回数据
-		ret_list = append(ret_list, map[string]interface{}{
-			"app_name":     name,
-			"app_namespace":  namespace,
-			"time": timestamp,
-			"env_name": groupname,
-			"state": state,
-			"status": status,
-			"mirror": images,
-		})
-	}
-
-	r.Data.List = ret_list
+	r.Data.List = dataList
 	c.JSON(http.StatusOK, r)
-
 }
 
 func GetServiceMetadata(c * gin.Context) {
 	appName := c.Query("app_name")
 	appNamespace := c.Query("app_namespace")
 
-	/**
-	rcNamespace := appNamespace
-	//获取rc的名字和命令空间:rcName,rcNamespace
-	rcName, rcNum, statusCode, err := getReplicationControllerName(appName, appNamespace)
-	**/
 	s := new(StatusResp)			//返回状态结构体
 
-	var res = map[string]interface{}{}
-
-	postFix := "/api/v1/namespaces"
-	url := "http://" + kubeApiserverPath + kubeApiserverPort + postFix + "/" + appNamespace + "/replicationcontrollers" + "/" + appName
-
-	statusCode, response, err := SendRawRequest("GET", url, nil)
-	Logger.Debug("statusCode: %d", statusCode)
-	Logger.Debug("repsonse: %s", response)
-
-
+	fetcher := new(util.KubeResponseFetcher)
+	statusCode, data, err := getServiceMeta(appName, appNamespace, fetcher)
 	if statusCode != http.StatusOK {
 		s.Status.State = 1
 		s.Status.Msg = err.Error()
 		c.JSON(statusCode, s)
 		return
 	}
-
-	bytes := []byte(response)
-
-	err = json.Unmarshal(bytes, &res)
 	if err != nil {
 		s.Status.State = 1
 		s.Status.Msg = err.Error()
 		c.JSON(http.StatusInternalServerError, s)
 		return
-	}
-
-	//获取更新时间
-	metadata := res["metadata"].(map[string]interface{})
-
-	labels := metadata["labels"].(map[string]interface{})
-	svcName := ""
-	if labels["app"] != nil {
-		svcName = labels["app"].(string)
-	}
-
-	createTime := metadata["creationTimestamp"].(string)
-	t, _ := time.Parse(time.RFC3339, createTime)
-	timestamp := fmt.Sprintf("%d-%02d-%02d %02d:%02d:%02d",
-		t.Year(), t.Month(), t.Day(),
-		t.Hour() + 8, t.Minute(), t.Second())
-
-	//获取容器个数
-	spec := res["spec"].(map[string]interface{})
-	replicas := spec["replicas"].(float64)
-
-	//判断服务运行状态,根据rc个数和容器个数进行判断
-	state := ""
-	if replicas == 0 {
-		state = "stopped"
-	}else if replicas > 0 {
-		state = "running"
-	}
-
-	//获取服务运行环境group
-	spec = res["spec"].(map[string]interface{})
-	template := spec["template"].(map[string]interface{})
-	tSpec := template["spec"].(map[string]interface{})
-	nodeSelector := tSpec["nodeSelector"].(map[string]interface{})
-	groupname := nodeSelector["groupname"].(string)
-
-	//获取服务容器实例中的镜像名
-	images := ""
-	containers := tSpec["containers"].([]interface{})
-	for _, value := range containers {
-		item := value.(map[string]interface{})
-		images += item["image"].(string)
-		images += ","
-	}
-
-	//获取实例运行状态
-	status := ""
-	cmd := "kubectl describe rc " + appName + " --namespace=" + appNamespace
-	bytes, err = util.ExecCommand(cmd)
-	if err != nil {
-		s.Status.State = 1
-		s.Status.Msg = err.Error()
-		c.JSON(http.StatusInternalServerError, s)
-		return
-	}
-	lines := strings.Split(string(bytes), "\n")
-	for _, value := range lines {
-		cols := strings.Split(value, "\t")
-		if cols[0] == "Replicas:" {
-			status += cols[1] + " / "
-		} else if cols[0] == "Pods Status:" {
-			status += cols[1]
-		}
-	}
-
-	//获取svc name
-	svcNameList := []string{}
-	cmd = "kubectl get svc -l app=" + svcName + " --namespace=" + appNamespace
-	Logger.Debug("The cmd is: %v", cmd)
-	bytes, err = util.ExecCommand(cmd)
-	if err != nil {
-		s.Status.State = 1
-		s.Status.Msg = err.Error()
-		c.JSON(http.StatusInternalServerError, s)
-		return
-	}
-	lines = strings.Split(string(bytes), "\n")
-	for index, value := range lines {
-		if index == 0 {continue}
-		cols := strings.Split(value, " ")
-		if cols[0] == "" {continue}
-		svcNameList = append(svcNameList, cols[0])
-	}
-
-	//获取服务信息,地址,端口,协议类型
-	urls := []interface{}{}
-
-	for _, value := range svcNameList {
-		svcName := value
-		Logger.Debug("Svc Name is: %v", svcName)
-		postFix = "/api/v1/namespaces/" + appNamespace + "/services" + "/" + svcName
-		url = "http://" + kubeApiserverPath + kubeApiserverPort + postFix
-		statusCode, response, err = SendRawRequest("GET", url, nil)
-		Logger.Debug("statusCode: %d", statusCode)
-		Logger.Debug("repsonse: %s", response)
-
-		if statusCode != http.StatusOK {
-			s.Status.State = 1
-			s.Status.Msg = err.Error()
-			c.JSON(statusCode, s)
-			return
-		}
-
-		bytes = []byte(response)
-
-		err = json.Unmarshal(bytes, &res)
-		if err != nil {
-			s.Status.State = 1
-			s.Status.Msg = err.Error()
-			c.JSON(http.StatusInternalServerError, s)
-			return
-		}
-
-		metadata := res["metadata"].(map[string]interface{})
-		portMap := map[string]interface{}{}
-		if metadata["annotations"] != nil {
-			portMap = metadata["annotations"].(map[string]interface{})
-		}
-
-		spec = res["spec"].(map[string]interface{})
-		ports := spec["ports"].([]interface{})
-
-		domain := ""
-		switch appNamespace {
-		case "in":
-			domain = appName + ".in.codoon.com"
-		case "default":
-			domain = appName + ".codoon.com"
-		}
-		//查询DNS服务,判断域名是否注册上
-		//var fetcher HttpResponseFetcher
-		//statusCode, response, err = checkServiceDNS(domain, fetcher)
-		//if statusCode != http.StatusOK {
-		//	s.Status.State = 1
-		//	s.Status.Msg = err.Error()
-		//	c.JSON(statusCode, s)
-		//	return
-		//}
-
-		//如果域名没有注册上,则使用cluterIp
-		//返回值"OK"表示DNS server没有相应的服务
-		if response == "OK" {
-			domain = spec["clusterIp"].(string)
-		}
-
-		for _, value := range ports {
-			item := value.(map[string]interface{})
-
-			port := item["port"].(float64)
-			name := strconv.FormatFloat(port, 'g', 5, 64)
-
-			protocol := "HTTP"
-			if portMap[name] != nil {
-				protocol = portMap[name].(string)
-			}
-			listenerPort := strconv.FormatFloat(port, 'g', 5, 64)
-			url := protocol + "://" + domain + ":" + listenerPort
-			urls = append(urls, url)
-		}
 	}
 
 	//拼接返回数据
@@ -691,17 +242,6 @@ func GetServiceMetadata(c * gin.Context) {
 		"state": 0,
 		"msg": "ok",
 	}
-	data := map[string]interface{}{
-		"app_name":     appName,
-		"app_namespace":  appNamespace,
-		"time": timestamp,
-		"env_name": groupname,
-		"state": state,
-		"status": status,
-		"mirror": images,
-		"urls": urls,
-	}
-
 	r := map[string]interface{}{
 		"status": st,
 		"data": data,
@@ -710,65 +250,25 @@ func GetServiceMetadata(c * gin.Context) {
 }
 
 func UpdateServiceStatus(c * gin.Context) {
-
+	s := new(StatusResp)
 	body, _ := ioutil.ReadAll(c.Request.Body)
 
 	var requestData map[string]interface{}  //获取request body的数据
-	err := json.Unmarshal(body, &requestData)
-
-	appName := requestData["app_name"].(string)
-	appNamespace := requestData["app_namespace"].(string)
-	operation := requestData["operation"].(string)
-
-	s := new(StatusResp)
-	if err != nil {
+	if err := json.Unmarshal(body, &requestData); err != nil {
 		s.Status.State = 1
 		s.Status.Msg = err.Error()
 		c.JSON(http.StatusInternalServerError, s)
 	}
 
-	file := "/tmp/" + appName + ".yaml"
-	Logger.Debug("tmp file is: %v", file)
-	//停止服务操作:设置容器个数为0
-	if operation == "1" {
-		Logger.Debug("Stopping service: %v", appName)
-		//先保存当前配置到特地文件中
-		cmd := "kubectl get rc " + appName + " --namespace=" + appNamespace + " -o yaml >" + file
-		_, err := util.ExecCommand(cmd)
-		if err != nil {
-			s.Status.State = 1
-			s.Status.Msg = err.Error()
-			c.JSON(http.StatusInternalServerError, s)
-			return
-		}
-		//缩减容器个数为0既而停止服务
-		cmd = "kubectl scale rc " + appName + " --namespace=" + appNamespace + " --replicas=0"
-		_, err = util.ExecCommand(cmd)
-		if err != nil {
-			s.Status.State = 1
-			s.Status.Msg = err.Error()
-			c.JSON(http.StatusInternalServerError, s)
-			return
-		}
-	} else if operation == "0" {
-		Logger.Debug("Starting service: %v", appName)
-		//删除久的rc
-		cmd := "kubectl delete rc " + appName + " --namespace=" + appNamespace
-		_, err := util.ExecCommand(cmd)
-		if err != nil {
-			s.Status.State = 1
-			s.Status.Msg = err.Error()
-			c.JSON(http.StatusInternalServerError, s)
-			return
-		}
-		cmd = "kubectl create -f " + file
-		_, err = util.ExecCommand(cmd)
-		if err != nil {
-			s.Status.State = 1
-			s.Status.Msg = err.Error()
-			c.JSON(http.StatusInternalServerError, s)
-			return
-		}
+	appName := requestData["app_name"].(string)
+	appNamespace := requestData["app_namespace"].(string)
+	operation := requestData["operation"].(string)
+
+	kubeCmd := new(util.KubeCmdImpl)
+	if err := updateServiceStatus(appName, appNamespace, operation, kubeCmd); err != nil {
+		s.Status.State = 1
+		s.Status.Msg = err.Error()
+		c.JSON(http.StatusInternalServerError, s)
 	}
 
 	s.Status.State = 0
@@ -780,20 +280,10 @@ func GetServiceConfig(c * gin.Context) {
 	appName := c.Query("app_name")
 	appNamespace := c.Query("app_namespace")
 
-	/**
-	rcNamespace := appNamespace
-	//获取rc的名字和命名空间
-	rcName, _, statusCode, err := getReplicationControllerName(appName, appNamespace)
-	**/
-
 	s := new(StatusResp)			//返回状态结构体
 
-	postFix := "/api/v1/namespaces"
-	url := "http://" + kubeApiserverPath + kubeApiserverPort + postFix + "/" + appNamespace + "/replicationcontrollers" + "/" + appName
-
-	statusCode, response, err := SendRawRequest("GET", url, nil)
-	Logger.Debug("statusCode: %d", statusCode)
-	Logger.Debug("repsonse: %s", response)
+	fetcher := new(util.KubeResponseFetcher)
+	statusCode, data, err := getServiceConfig(appName, appNamespace, fetcher)
 
 	if statusCode != http.StatusOK {
 		s.Status.State = 1
@@ -801,11 +291,6 @@ func GetServiceConfig(c * gin.Context) {
 		c.JSON(statusCode, s)
 		return
 	}
-
-	bytes := []byte(response)
-	var res map[string]interface{}
-
-	err = json.Unmarshal(bytes, &res)
 	if err != nil {
 		s.Status.State = 1
 		s.Status.Msg = err.Error()
@@ -813,133 +298,10 @@ func GetServiceConfig(c * gin.Context) {
 		return
 	}
 
-	//获取容器个数
-	spec := res["spec"].(map[string]interface{})
-	replicas := spec["replicas"].(float64)
-
-	//获取运行环境
-	template := spec["template"].(map[string]interface{})
-	tSpec := template["spec"].(map[string]interface{})
-	nodeSelector := tSpec["nodeSelector"].(map[string]interface{})
-	groupname := nodeSelector["groupname"].(string)
-
-	//获取集群ip列表:ips
-	ips, code, err := getClusterIPs(groupname)
-	if err != nil {
-		s.Status.State = 1
-		s.Status.Msg = err.Error()
-		c.JSON(code, s)
-	}
-
-	containers := tSpec["containers"].([]interface{})
-
-	//TODO 只返回一个容器的信息
-	container := containers[0].(map[string]interface{})
-	image := container["image"].(string)
-
-	//获取镜像信息
-	ims := strings.Split(image, ":")
-	imagePath := ims[0]
-	imageUrls := strings.Split(imagePath, "/")
-	imageName := ""
-	if len(imageUrls) <=2 {
-		imageName += "library" + "/"
-	}
-	for index,value := range imageUrls {
-		if index == 0 {
-			continue
-		}else if index < len(imageUrls) - 1 {
-			imageName += value + "/"
-		} else {
-			imageName += value
-		}
-	}
-
-	tag := "latest" //默认为latest
-	if len(ims) == 2 {
-		tag = ims[1]
-	}
-
-	//获取执行命令信息
-	cmd := ""
-	if container["command"] != nil {
-		cmdList := container["command"].([]interface{})
-		for _, value := range cmdList {
-			cmd += value.(string) + " "
-		}
-	}
-
-	//获取资源信息
-	cpu := ""
-	mem := ""
-	if container["resources"] != nil {
-		resource := container["resources"].(map[string]interface{})
-		limits := resource["limits"].(map[string]interface{})
-		if limits["cpu"] != nil {
-			cpu = limits["cpu"].(string)
-			l := len(cpu)
-			if util.Substr(cpu, l - 1, 1) == "m" {
-				cpuNum := util.Substr(cpu, 0, l - 1)
-				c,_ := strconv.ParseFloat(cpuNum, 10)
-				r := c / 1000
-				cpu = strconv.FormatFloat(r, 'g', 2, 64)
-			}
-		}
-		if limits["memory"] != nil {
-			mem = limits["memory"].(string)
-		}
-	}
-
-	var ports = []interface{}{}
-	if container["ports"] != nil {
-		portsList := container["ports"].([]interface{})
-		for _, value := range portsList {
-			port := value.(map[string]interface{})
-			Logger.Debug("container port is: %v", port["containerPort"].(float64))
-			containerPort := 0.0
-			protocol := ""
-			typ := ""
-			if port["containerPort"] != nil {
-				containerPort = port["containerPort"].(float64)
-			}
-			if port["protocol"] != nil {
-				protocol = port["protocol"].(string)
-				typ = protocol
-			}
-			ports = append(ports, map[string]interface{}{
-				"port": containerPort,
-				"protocol": protocol,
-				"type": typ,
-			})
-		}
-	}
-	var envValues = []interface{}{}
-	if container["env"] != nil {
-		envValues = container["env"].([]interface{})
-	}
-
 	//拼接返回数据
 	state := map[string]interface{}{
 		"state": 0,
 		"msg": "ok",
-	}
-	data := map[string]interface{}{
-		"env": map[string]interface{}{
-			"app_name":     appName,
-			"app_namespace":  appNamespace,
-			"image_name": imageName,
-			"tag": tag,
-			"env_name": groupname,
-			"core": cpu,
-			"memory": mem,
-			"count": replicas,
-			"code": cmd,
-			"ips": ips,
-		},
-		"config": map[string]interface{}{
-			"ports": ports,
-			"extra_env": envValues,
-		},
 	}
 
 	r := map[string]interface{}{
@@ -947,7 +309,6 @@ func GetServiceConfig(c * gin.Context) {
 		"data": data,
 	}
 	c.JSON(http.StatusOK, r)
-
 }
 
 /**
@@ -1106,15 +467,8 @@ func CreateService(c * gin.Context) {
 			},
 		}
 
-		b, _ := json.Marshal(svcRequestJson)
-		Logger.Debug("svc request json is: %v", string(b))
-
-		postFix := "/api/v1/namespaces/" + appNamespace + "/services"
-		url := "http://" + kubeApiserverPath + kubeApiserverPort + postFix
-		statusCode, response, err := SendJsonRequest("POST", url, svcRequestJson)
-		Logger.Debug("statusCode: %d", statusCode)
-		Logger.Debug("repsonse: %s", response)
-
+		fetcher := new(util.KubeResponseFetcher)
+		statusCode, _, err := fetcher.CreateSvc(appNamespace, svcRequestJson)
 		if statusCode != http.StatusCreated {
 			s.Status.State = 1
 			s.Status.Msg = err.Error()
@@ -1145,15 +499,8 @@ func CreateService(c * gin.Context) {
 			},
 		}
 
-		b, _ := json.Marshal(svcRequestJson)
-		Logger.Debug("svc request json is: %v", string(b))
-
-		postFix := "/api/v1/namespaces/" + appNamespace + "/services"
-		url := "http://" + kubeApiserverPath + kubeApiserverPort + postFix
-		statusCode, response, err := SendJsonRequest("POST", url, svcRequestJson)
-		Logger.Debug("statusCode: %d", statusCode)
-		Logger.Debug("repsonse: %s", response)
-
+		fetcher := new(util.KubeResponseFetcher)
+		statusCode, _, err := fetcher.CreateSvc(appNamespace, svcRequestJson)
 		if statusCode != http.StatusCreated {
 			s.Status.State = 1
 			s.Status.Msg = err.Error()
@@ -1211,6 +558,10 @@ func CreateService(c * gin.Context) {
 									"mountPath": "/etc/localtime",
 									"name": "time-zone",
 								},
+								map[string]interface{}{
+									"mountPath": "/etc/hosts",
+									"name": "hosts",
+								},
 							},
 							"imagePullPolicy": "Always",
 						},
@@ -1228,6 +579,12 @@ func CreateService(c * gin.Context) {
 								"path": "/etc/localtime",
 							},
 						},
+						map[string]interface{}{
+							"name": "hosts",
+							"hostPath": map[string]interface{}{
+								"path": "/etc/hosts",
+							},
+						},
 					},
 					"imagePullSecrets": []interface{}{
 						map[string]interface{}{
@@ -1242,14 +599,8 @@ func CreateService(c * gin.Context) {
 		},
 	}
 
-	b, _ := json.Marshal(rcRequestJson)
-	Logger.Debug("rc request json is: %v", string(b))
-
-	postFix := "/api/v1/namespaces/" + appNamespace + "/replicationcontrollers"
-	url := "http://" + kubeApiserverPath + kubeApiserverPort + postFix
-	statusCode, response, err := SendJsonRequest("POST", url, rcRequestJson)
-	Logger.Debug("statusCode: %d", statusCode)
-	Logger.Debug("repsonse: %s", response)
+	fetcher := new(util.KubeResponseFetcher)
+	statusCode, _, err := fetcher.CreateRc(appNamespace, rcRequestJson)
 
 	if statusCode != http.StatusCreated {
 		s.Status.State = 1
@@ -1263,9 +614,8 @@ func CreateService(c * gin.Context) {
 
 	//注册到DNS
 	//if outterPortNum > 0 {
-	kubeCmd := new(KubeCmdImpl)
-	httpFetcher := new(HttpResponseFetcher)
-	go registerDNS(appName, appNamespace, kubeCmd, httpFetcher)
+	kubeCmd := new(util.KubeCmdImpl)
+	go util.RegisterDNS(appName, appNamespace, kubeCmd, fetcher)
 	/**
 	statusCode, err = registerDNS(appName, appNamespace, kubeCmd, httpFetcher)
 	if statusCode != http.StatusOK {
@@ -1360,32 +710,26 @@ func CreateService(c * gin.Context) {
 	c.JSON(statusCode, r)
 }
 
-//rolling-update
+//更改服务资源配额
 func UpdateServiceQuota(c *gin.Context) {
 	body, _ := ioutil.ReadAll(c.Request.Body)
 
+	s := new(StatusResp)
 	var requestData map[string]interface{}  //获取request body的数据
-	err := json.Unmarshal(body, &requestData)
+	if err := json.Unmarshal(body, &requestData); err != nil {
+		s.Status.State = 1
+		s.Status.Msg = err.Error()
+		c.JSON(http.StatusInternalServerError, s)
+	}
 
 	appName := requestData["app_name"].(string)
 	appNamespace := requestData["app_namespace"].(string)
 	cpu := requestData["core"].(string)
 	mem := requestData["memory"].(string)
 
-	s := new(StatusResp)
-	if err != nil {
-		s.Status.State = 1
-		s.Status.Msg = err.Error()
-		c.JSON(http.StatusInternalServerError, s)
-	}
-
-	//获取当前服务的版本和配额
-	postFix := "/api/v1/namespaces"
-	url := "http://" + kubeApiserverPath + kubeApiserverPort + postFix + "/" + appNamespace + "/replicationcontrollers" + "/" + appName
-
-	statusCode, response, err := SendRawRequest("GET", url, nil)
-	Logger.Debug("statusCode: %d", statusCode)
-	Logger.Debug("repsonse: %s", response)
+	fetcher := new(util.KubeResponseFetcher)
+	kubeCmd := new(util.KubeCmdImpl)
+	statusCode, err := updateServiceQuota(appName, appNamespace, cpu, mem, fetcher, kubeCmd)
 
 	if statusCode != http.StatusOK {
 		s.Status.State = 1
@@ -1393,11 +737,6 @@ func UpdateServiceQuota(c *gin.Context) {
 		c.JSON(statusCode, s)
 		return
 	}
-
-	bytes := []byte(response)
-	var res map[string]interface{}
-
-	err = json.Unmarshal(bytes, &res)
 	if err != nil {
 		s.Status.State = 1
 		s.Status.Msg = err.Error()
@@ -1405,96 +744,29 @@ func UpdateServiceQuota(c *gin.Context) {
 		return
 	}
 
-	//获取老版本信息
-	metadata := res["metadata"].(map[string]interface{})
-	labels := metadata["labels"].(map[string]interface{})
-	oldVersion := ""
-	if labels["version"] != nil {
-		oldVersion = labels["version"].(string)
-	}
-
-	//获取老版本配额
-	spec := res["spec"].(map[string]interface{})
-	template := spec["template"].(map[string]interface{})
-	tSpec := template["spec"].(map[string]interface{})
-	containers := tSpec["containers"].([]interface{})
-
-	//TODO 暂时支持单个容器
-	container := containers[0].(map[string]interface{})
-	oldCpu := ""
-	oldMem := ""
-	if container["resources"] != nil {
-		resource := container["resources"].(map[string]interface{})
-		limits := resource["limits"].(map[string]interface{})
-		if limits["cpu"] != nil {
-			oldCpu = limits["cpu"].(string)
-		}
-		if limits["memory"] != nil {
-			oldMem = limits["memory"].(string)
-		}
-	}
-
-	//生成新版本号,以日期作为标致
-	t := time.Now()
-	newVersion := t.Format("20060102150405")
-	newVersion = "v" + newVersion
-
-	newAppName := ""
-	strs := strings.Split(appName, "-")
-	for i :=0; i < len(strs) -1; i++ {
-		newAppName += strs[i] + "-"
-	}
-	newAppName = newAppName + newVersion
-	Logger.Debug("New App Name is: %v", newAppName)
-
-	//滚动更新
-	cmd := "kubectl get rc " + appName + " --namespace=" + appNamespace + " -o yaml " +
-	        " | sed 's/resourceVersion:.*/resourceVersion: ''/g' " +
-			" | sed 's/name: " + appName + "/name: " + newAppName + "/g' " +   //替换rc名字
-			" | sed 's/version: " + oldVersion + "/version: " + newVersion + "/g' " +		  //替换rc版本
-			" | sed 's/cpu: " + oldCpu + "/cpu: " + cpu + "/g' " + 							 //替换cpu
-			" | sed 's/memory: " + oldMem + "/memory: " + mem + "/g' " + 					//替换mem
-			" | kubectl rolling-update " + appName + " --update-period=20s --namespace=" + appNamespace + " -f - "								//滚动更新
-
-	Logger.Debug("The cmd is: %v", cmd)
-	go util.ExecCommand(cmd)
-	/**
-	if err != nil {
-		s.State = 1
-		s.Msg = err.Error()
-		c.JSON(http.StatusInternalServerError, s)
-		return
-	}**/
 	s.Status.State = 0
 	s.Status.Msg = "updated"
 	c.JSON(http.StatusOK, s)
 }
 
-//rolling-update
+//更新服务执行的命令
 func UpdateServiceCmd(c *gin.Context) {
 	body, _ := ioutil.ReadAll(c.Request.Body)
-
-	var requestData map[string]interface{}  //获取request body的数据
-	err := json.Unmarshal(body, &requestData)
-
-	appName := requestData["app_name"].(string)
-	appNamespace := requestData["app_namespace"].(string)
-	newCmd := requestData["command"].(string)
-
 	s := new(StatusResp)
-	if err != nil {
+	var requestData map[string]interface{}  //获取request body的数据
+	if err := json.Unmarshal(body, &requestData); err != nil {
 		s.Status.State = 1
 		s.Status.Msg = err.Error()
 		c.JSON(http.StatusInternalServerError, s)
 	}
 
-	//获取当前服务的版本和配额
-	postFix := "/api/v1/namespaces"
-	url := "http://" + kubeApiserverPath + kubeApiserverPort + postFix + "/" + appNamespace + "/replicationcontrollers" + "/" + appName
+	appName := requestData["app_name"].(string)
+	appNamespace := requestData["app_namespace"].(string)
+	newCmd := requestData["command"].(string)
 
-	statusCode, response, err := SendRawRequest("GET", url, nil)
-	Logger.Debug("statusCode: %d", statusCode)
-	Logger.Debug("repsonse: %s", response)
+	fetcher := new(util.KubeResponseFetcher)
+	kubeCmd := new(util.KubeCmdImpl)
+	statusCode, err := updateServiceCmd(appName, appNamespace, newCmd, fetcher, kubeCmd)
 
 	if statusCode != http.StatusOK {
 		s.Status.State = 1
@@ -1502,72 +774,12 @@ func UpdateServiceCmd(c *gin.Context) {
 		c.JSON(statusCode, s)
 		return
 	}
-
-	bytes := []byte(response)
-	var res map[string]interface{}
-
-	err = json.Unmarshal(bytes, &res)
 	if err != nil {
 		s.Status.State = 1
 		s.Status.Msg = err.Error()
 		c.JSON(http.StatusInternalServerError, s)
 		return
 	}
-
-	//获取老版本信息
-	metadata := res["metadata"].(map[string]interface{})
-	labels := metadata["labels"].(map[string]interface{})
-	oldVersion := ""
-	if labels["version"] != nil {
-		oldVersion = labels["version"].(string)
-	}
-
-	//获取老版本执行命令
-	spec := res["spec"].(map[string]interface{})
-	template := spec["template"].(map[string]interface{})
-	tSpec := template["spec"].(map[string]interface{})
-	containers := tSpec["containers"].([]interface{})
-
-	//TODO 暂时支持单个容器
-	container := containers[0].(map[string]interface{})
-	oldCmd := ""
-	if container["command"] != nil {
-		cmdList := container["command"].([]interface{})
-		for _, value := range cmdList {
-			oldCmd += value.(string) + " "
-		}
-	}
-
-	//生成新版本号,以日期作为标致
-	t := time.Now()
-	newVersion := t.Format("20060102150405")
-	newVersion = "v" + newVersion
-
-	newAppName := ""
-	strs := strings.Split(appName, "-")
-	for i :=0; i < len(strs) -1; i++ {
-		newAppName += strs[i] + "-"
-	}
-	newAppName = newAppName + newVersion
-	Logger.Debug("New App Name is: %v", newAppName)
-
-	//滚动更新
-	cmd := "kubectl get rc " + appName + " --namespace=" + appNamespace + " -o yaml " +
-			" | sed 's/resourceVersion:.*/resourceVersion: ''/g' " +
-			" | sed 's/name: " + appName + "/name: " + newAppName + "/g " +   //替换rc名字
-			" | sed 's/version: " + oldVersion + "/version: " + newVersion + "/g " +		  //替换rc版本
-			" | sed 's/command: " + oldCmd + "/cmd: " + newCmd + "/g " + 					//替换mem
-	        " | kubectl rolling-update " + appName + " --update-period=20s --namespace=" + appNamespace + " -f - "
-
-	go util.ExecCommand(cmd)
-	/**
-	if err != nil {
-		s.State = 1
-		s.Msg = err.Error()
-		c.JSON(http.StatusInternalServerError, s)
-		return
-	}
-	**/
 	s.Status.State = 0
 	s.Status.Msg = "updated"
 	c.JSON(http.StatusOK, s)
@@ -1575,27 +787,34 @@ func UpdateServiceCmd(c *gin.Context) {
 
 func ScaleReplicas(c *gin.Context) {
 	body, _ := ioutil.ReadAll(c.Request.Body)
-
+	s := new(StatusResp)
 	var requestData map[string]interface{}  //获取request body的数据
-	err := json.Unmarshal(body, &requestData)
+	if err := json.Unmarshal(body, &requestData); err != nil {
+		s.Status.State = 1
+		s.Status.Msg = err.Error()
+		c.JSON(http.StatusInternalServerError, s)
+	}
 
+	//获取参数
+	//appName: 应用名字
+	//appNamespace: 应用命名空间
+	//replicas: 实例个数
 	appName := requestData["app_name"].(string)
 	appNamespace := requestData["app_namespace"].(string)
 	count := requestData["count"].(float64)
 	counts := uint64(count)
 	replicas := strconv.FormatUint(counts, 10)
 
-	s := new(StatusResp)
-	if err != nil {
+	fetcher := new(util.KubeResponseFetcher)
+	kubeCmd := new(util.KubeCmdImpl)
+	statusCode, err := scaleReplicas(appName, appNamespace, replicas, fetcher, kubeCmd)
+
+	if statusCode != http.StatusOK {
 		s.Status.State = 1
 		s.Status.Msg = err.Error()
-		c.JSON(http.StatusInternalServerError, s)
+		c.JSON(statusCode, s)
+		return
 	}
-
-	cmd := "kubectl scale rc " + appName + " --namespace=" + appNamespace + " --replicas=" + replicas
-	Logger.Debug("The cmd is: %v", cmd)
-
-	_, err = util.ExecCommand(cmd)
 	if err != nil {
 		s.Status.State = 1
 		s.Status.Msg = err.Error()
@@ -1603,17 +822,9 @@ func ScaleReplicas(c *gin.Context) {
 		return
 	}
 
-	//更新DNS
-	strs := strings.Split(appName, "-v")
-	appName = strs[0]
-	kubeCmd := new(KubeCmdImpl)
-	httpFetcher := new(HttpResponseFetcher)
-	go registerDNS(appName, appNamespace, kubeCmd, httpFetcher)
-
 	s.Status.State = 0
 	s.Status.Msg = "updated"
 	c.JSON(http.StatusOK, s)
-
 }
 
 func DeliveryRelease(c *gin.Context) {
@@ -1639,8 +850,8 @@ func DeliveryRelease(c *gin.Context) {
 		return
 	}
 
-	kubeCmd := new(KubeCmdImpl)
-	fetcher := new(HttpResponseFetcher)
+	kubeCmd := new(util.KubeCmdImpl)
+	fetcher := new(util.KubeResponseFetcher)
 	statusCode, err := deliveryRelease(appName, appNamespace, image, fetcher, kubeCmd)
 
 	if err != nil {
@@ -1662,255 +873,7 @@ func DeliveryRelease(c *gin.Context) {
 	c.JSON(http.StatusOK, s)
 }
 
-/**
-返回值:
-1: replicationController名字
-2: replicationCOntroller个数
- */
-func getReplicationControllerName(name, namespace string) (string, int, int, error) {
-	postFix := "/api/v1/namespaces"
-	url := "http://" + kubeApiserverPath + kubeApiserverPort + postFix + "/" + namespace + "/services" + "/" + name
-	statusCode, response, err := SendRawRequest("GET", url, nil)
-	Logger.Debug("statusCode: %d", statusCode)
-	Logger.Debug("repsonse: %s", response)
-
-	if statusCode != http.StatusOK {
-		return "", 0, statusCode, err
-	}
-
-	bytes := []byte(response)
-	var res map[string]interface{}
-
-	err = json.Unmarshal(bytes, &res)
-	if err != nil {
-		return "", 0, http.StatusInternalServerError, err
-	}
-
-	//获取selector: app=XXX.以此作为筛选rc的标记
-	selector := ""
-	spec := res["spec"].(map[string]interface{})
-	if spec["selector"] != nil {
-		selectorMap := spec["selector"].(map[string]interface{})
-		for key, _ := range selectorMap {
-			selector += " -l " + key + "=" + selectorMap[key].(string)
-		}
-	}
-	/**
-	获取rc name
-	 */
-	cmd := "kubectl get rc " + selector + " --namespace=" + namespace
-	bytes, err = util.ExecCommand(cmd)
-	if err != nil {
-		return "", 0, http.StatusInternalServerError, err
-	}
-	lines := strings.Split(string(bytes), "\n")
-	rcName := ""
-	rcNum := 0
-	for _, line := range lines {
-		cols := strings.Split(line, " ")
-		Logger.Debug("rcName is: %v", cols[0])
-		if cols[0] != "" {
-			rcName = cols[0]
-			rcNum++
-		}
-	}
-
-	Logger.Debug("the latest rc name is: %v", rcName)
-
-	return rcName,rcNum, http.StatusOK, nil
-}
-
-func createListener(listenerPort, backendPort int, loadBalancerId, protocol string) (bool, error) {
-	Logger.Info("Begin creating slb listener: listenerPort->%s, backendPort->%s, loadBalancerId->%s, protocl->%s",
-		listenerPort, backendPort, loadBalancerId, protocol )
-	var res string
-	switch protocol {
-	case "TCP":
-		createApi := rest.NewCreateLoadBalancerTCPListenerRequest("http://slb.aliyuncs.com/", listenerPort, backendPort, loadBalancerId)
-		res = createApi.GetResponse("", "60")
-	case "HTTP":
-		createApi := rest.NewCreateLoadBalancerHTTPListenerRequest("http://slb.aliyuncs.com/", listenerPort, backendPort, loadBalancerId)
-		res = createApi.GetResponse("", "60")
-	case "HTTPS":
-		createApi := rest.NewCreateLoadBalancerHTTPSListenerRequest("http://slb.aliyuncs.com/", listenerPort, backendPort, loadBalancerId)
-		res = createApi.GetResponse("", "60")
-	case "UDP":
-		createApi := rest.NewCreateLoadBalancerUDPListenerRequest("http://slb.aliyuncs.com/", listenerPort, backendPort, loadBalancerId)
-		res = createApi.GetResponse("", "60")
-	}
-
-	Logger.Info("the create result is : %s", res)
-	var dat map[string]interface{}
-	json.Unmarshal([]byte(res), &dat)
-
-	if dat["Code"] != nil {
-		return false, errors.New(dat["Message"].(string))
-	}
-	return true, nil
-}
-
-func startListener(listenerPort int, loadBalancerId string) (bool, error) {
-	Logger.Debug("Begin starting listener")
-	startApi := rest.NewStartLoadBalancerListenerRequest("http://slb.aliyuncs.com/", listenerPort, loadBalancerId)
-	res := startApi.GetResponse("", "60")
-	Logger.Debug("the result is : %s", res)
-
-	var dat map[string]interface{}
-	json.Unmarshal([]byte(res), &dat)
-
-	if dat["Code"] != nil {
-		return false, errors.New(dat["Message"].(string))
-	}
-
-	return true, nil
-}
 
 
-func InitDBPool(setting MysqlConfig) error {
-	var err error
-	KubeDb, err = InitGormDbPool(&setting, true)
-	if nil != err {
-		Logger.Error("InitGormDbPool err :%v,%v", setting, err)
-		return err
-	}
-
-	return err
-}
-
-func getClusterIPs(groupname string) ([]string, int, error) {
-	ips := []string{}
-	postFix := "/api/v1/nodes"
-	url := "http://" + kubeApiserverPath + kubeApiserverPort + postFix
-	statusCode, response, err := SendRawRequest("GET", url, nil)
-	Logger.Debug("statusCode: %d", statusCode)
-	Logger.Debug("repsonse: %s", response)
 
 
-	if statusCode != http.StatusOK {
-		return nil, statusCode, err
-	}
-
-	byte := []byte(response)
-	var res map[string]interface{}
-
-	err = json.Unmarshal(byte, &res)
-	if err != nil {
-		return nil, statusCode, err
-	}
-
-	list := res["items"].([]interface{})
-
-	for _, value := range list {
-		item := value.(map[string]interface{})
-
-		metadata := item["metadata"].(map[string]interface{})
-		labels := metadata["labels"].(map[string]interface{})
-		if labels["groupname"] == nil {continue}
-		key := labels["groupname"].(string)
-
-		if key == groupname {
-			status := item["status"].(map[string]interface{})
-			addresses := status["addresses"].([]interface{})
-
-			for _,value := range addresses {
-				item := value.(map[string]interface{})
-				if item["type"].(string) == "LegacyHostIP" {
-					ips = append(ips, item["address"].(string))
-				}
-			}
-		}
-
-	}
-	return ips, http.StatusOK, nil
-}
-
-func registerDNS(appName, appNamespace string, kubeCmd KubeCmd, fetcher HttpResponseFetch) (int, error) {
-	domain := ""
-	switch appNamespace {
-	case "default":
-		domain = appName + ".codoon.com"
-	case "in":
-		domain = appName + ".in.codoon.com"
-	}
-	//调用kube cmd命令获取数据
-	bytes, err := kubeCmd.GetNodesIP(appName, appNamespace)
-
-	if err != nil {
-		return http.StatusInternalServerError, err
-	}
-
-	reqJson := util.BytesToDNSRequestJSON(bytes, domain)
-
-	url := "http://" + skyDNSPath + skyDNSPort + "/setdns"
-	statusCode, response, err := fetcher.SendJsonRequest("POST", url, reqJson)
-	Logger.Debug("statusCode: %d", statusCode)
-	Logger.Debug("repsonse: %s", response)
-
-	if err != nil {
-		return statusCode, err
-	}
-	return http.StatusOK, nil
-}
-
-func checkServiceDNS(domain string, fetcher HttpResponseFetch) (int, string, error) {
-	reqJson := protocol.GetDnsReq{
-		URL:domain,
-	}
-
-	url := "http://" + skyDNSPath + skyDNSPort + "/getdns"
-	statusCode, response, err := fetcher.SendJsonRequest("POST", url, reqJson)
-	Logger.Debug("statusCode: %d", statusCode)
-	Logger.Debug("repsonse: %s", response)
-
-	if err != nil {
-		return statusCode, "", err
-	}
-	return http.StatusOK, response, nil
-}
-
-//版本发布
-//appName: 应用名字
-//appNamespace: 应用命名空间
-//image: 镜像
-//fetcher: 访问kube-apiserver获取数据
-//kubeCmd: 调用kubectl命令
-func deliveryRelease(appName, appNamespace string, image string, fetcher HttpResponseFetch, kubeCmd KubeCmd) (int, error) {
-	//获取当前服务的版本和镜像名
-	statusCode, response, err := fetcher.GetKubeAppContent(appName, appNamespace)
-
-	bytes := []byte(response)
-	var res map[string]interface{}
-
-	err = json.Unmarshal(bytes, &res)
-
-	//获取老版本信息
-	metadata := res["metadata"].(map[string]interface{})
-	labels := metadata["labels"].(map[string]interface{})
-	oldVersion := ""
-	if labels["version"] != nil {
-		oldVersion = labels["version"].(string)
-	}
-
-	//获取老版本镜像
-	spec := res["spec"].(map[string]interface{})
-	template := spec["template"].(map[string]interface{})
-	tSpec := template["spec"].(map[string]interface{})
-	containers := tSpec["containers"].([]interface{})
-
-	//TODO 暂时支持单个容器
-	container := containers[0].(map[string]interface{})
-	oldImage := ""
-	if container["image"] != nil {
-		oldImage = container["image"].(string)
-	}
-
-	if image != oldImage {
-		//发布版本
-		_, err = kubeCmd.RollingUpdate(appName, appNamespace, image)
-	} else if image == oldImage {
-		//应用重启
-		_, err = kubeCmd.Restart(appName, appNamespace, oldVersion, oldImage)
-	}
-	return statusCode, err
-
-}

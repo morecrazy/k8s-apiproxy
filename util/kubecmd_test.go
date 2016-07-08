@@ -1,4 +1,4 @@
-package httpsrv
+package util
 
 import (
 	"testing"
@@ -17,3 +17,4 @@ func TestRollingUpdate(t *testing.T)  {
 	}
 	fmt.Printf(res)
 }
+

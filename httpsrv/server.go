@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"fmt"
+	"codoon_ops/kubernetes-apiproxy/util"
 )
 
 var kubeApiserverPath = ""
@@ -76,7 +77,7 @@ func AccountAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		common.Logger.Debug("pass account auth")
+		common.Logger.Info("pass account auth")
 		c.Next()
 	}
 }
@@ -103,9 +104,14 @@ func InitExternalConfig(config *common.Configure)  {
 	registryPort = config.External["registryPort"]
 	skyDNSPath = config.External["SkyDNSPath"]
 	skyDNSPort = config.External["SkyDNSPort"]
+
 	loginUrl = config.External["loginPath"]
 	sourceType = config.External["sourceType"]
 	authLogin = config.External["authLogin"]
+
+	util.SkyDnsUrl = "http://" + skyDNSPath + skyDNSPort + "/setdns"
+	util.RegistryUrl = "http://" + registryPath + registryPort
+	util.KubeUrl = "http://" + kubeApiserverPath + kubeApiserverPort
 }
 
 func StartServer() {

@@ -19,7 +19,7 @@ func TestBytesToDNSRequestJSON(t *testing.T)  {
 
 	for _, c := range cases {
 		ips := []byte(c.in_arg1)
-		reqJson := BytesToDNSRequestJSON(ips, c.in_arg2)
+		reqJson := bytesToDNSRequestJSON(ips, c.in_arg2)
 		b, _ := json.Marshal(reqJson)
 		got := string(b)
 		if c.want != got {

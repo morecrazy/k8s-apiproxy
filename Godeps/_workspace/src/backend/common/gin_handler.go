@@ -1,12 +1,16 @@
+// by liudan
 package common
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"net/url"
 	"strings"
 	"third/gin"
@@ -18,7 +22,7 @@ import (
 // It should be called before your business logic.
 func ReqData2Form() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userId := c.Request.Header.Get("user_id")
+		userId := c.Request.Header.Get(CODOON_USER_ID)
 		if c.Request.Method == "POST" || c.Request.Method == "PUT" {
 			data, err := ioutil.ReadAll(c.Request.Body)
 			if err != nil {
@@ -35,14 +39,19 @@ func ReqData2Form() gin.HandlerFunc {
 					c.Request.Body = ioutil.NopCloser(bytes.NewReader(data))
 				} else {
 					c.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-					values.Set("user_id", userId)
+					// if request data is form format, set user_id only when user_id of values is empty.
+					if values.Get(CODOON_USER_ID) == "" {
+						values.Set(CODOON_USER_ID, userId)
+					}
 					c.Request.Body = ioutil.NopCloser(strings.NewReader(values.Encode()))
 				}
 			} else {
-				c.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-				v["user_id"] = userId
+				// inject use_id into form
+				v[CODOON_USER_ID] = userId
 				form := map2Form(v)
-				c.Request.Body = ioutil.NopCloser(strings.NewReader(form.Encode()))
+				s := form.Encode()
+				c.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				c.Request.Body = ioutil.NopCloser(strings.NewReader(s))
 			}
 		}
 	}
@@ -104,9 +113,11 @@ func GinSlowLogger(slog SlowLogger, threshold time.Duration) gin.HandlerFunc {
 }
 
 const (
-	CODOON_REQUEST_ID = "codoon_request_id"
-	CODOON_USER_ID    = "user_id"
-	KAFKA_TOPIC       = "codoon-kafka-log"
+	CODOON_REQUEST_ID     = "codoon_request_id"
+	CODOON_SERVICE_CODE   = "codoon_service_code"
+	CODOON_USER_ID        = "user_id"
+	KAFKA_TOPIC           = "codoon-kafka-log"
+	KAFKA_PARTITION_COUNT = 2
 )
 
 // func GinServiceCoder(code string) gin.HandlerFunc {
@@ -119,6 +130,7 @@ const (
 
 type KafkaLogger struct {
 	RequestId   string
+	ServiceCode string
 	UserId      string
 	ServiceName string
 	StartTime   time.Time
@@ -131,8 +143,9 @@ type KafkaLogger struct {
 
 func (kl *KafkaLogger) Encode() ([]byte, error) {
 	var buf bytes.Buffer
-	_, err := fmt.Fprintf(&buf, "%s|%s|%s|%d|%d|%s|%s|%s|%d",
+	_, err := fmt.Fprintf(&buf, "%s|%s|%s|%s|%d|%d|%s|%s|%s|%d",
 		kl.RequestId,
+		kl.ServiceCode,
 		kl.UserId,
 		kl.ServiceName,
 		kl.StartTime.UnixNano()/1e6, // timestamp, ms
@@ -172,15 +185,24 @@ func GinKafkaLogger(srvName, srvCode string, brockerList []string) gin.HandlerFu
 		}
 	}()
 
+	var partition int32
+	if srvCode == "" {
+		partition = 0
+	} else {
+		srvCodeI64, _ := binary.ReadVarint(bytes.NewReader([]byte(srvCode)))
+		partition = int32(srvCodeI64) % KAFKA_PARTITION_COUNT
+	}
+
 	return func(c *gin.Context) {
 		start := time.Now()
 
 		// colored with current service code
 		if srvCode != "" {
-			c.Request.Header.Set(CODOON_REQUEST_ID, c.Request.Header.Get(CODOON_REQUEST_ID)+srvCode)
+			c.Request.Header.Set(CODOON_SERVICE_CODE, c.Request.Header.Get(CODOON_SERVICE_CODE)+srvCode)
 		}
 
 		reqId := c.Request.Header.Get(CODOON_REQUEST_ID)
+		srvCodeChain := c.Request.Header.Get(CODOON_SERVICE_CODE)
 		userId := c.Request.Header.Get(CODOON_USER_ID)
 		method := c.Request.Method
 		host := c.Request.Host
@@ -190,6 +212,7 @@ func GinKafkaLogger(srvName, srvCode string, brockerList []string) gin.HandlerFu
 
 		m := &KafkaLogger{
 			RequestId:   reqId,
+			ServiceCode: srvCodeChain,
 			UserId:      userId,
 			ServiceName: srvName,
 			StartTime:   start,
@@ -202,11 +225,84 @@ func GinKafkaLogger(srvName, srvCode string, brockerList []string) gin.HandlerFu
 
 		inputChannel <- &kafka.ProducerMessage{
 			Topic:     KAFKA_TOPIC,
-			Partition: 0, // TODO
+			Partition: partition,
 			Key:       kafka.StringEncoder(srvName),
 			Value:     m,
 		}
 
 		// log.Printf("kafka msg send:%+v", m)
+	}
+}
+
+func GinRecovery() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		defer func() {
+			err := recover()
+			if err != nil {
+				switch err.(type) {
+				case error:
+					CheckError(err.(error))
+				default:
+					err := errors.New(fmt.Sprint(err))
+					CheckError(err)
+				}
+
+				stack := stack(3)
+				Logger.Error("PANIC: %s\n%s", err, stack)
+
+				c.Writer.WriteHeader(http.StatusInternalServerError)
+			}
+
+		}()
+
+		c.Next()
+	}
+}
+
+func MyRecovery() {
+
+	err := recover()
+	if err != nil {
+		switch err.(type) {
+		case error:
+			CheckError(err.(error))
+		default:
+			err := errors.New(fmt.Sprint(err))
+			CheckError(err)
+		}
+
+		stack := stack(3)
+		Logger.Error("PANIC: %s\n%s", err, stack)
+	}
+
+}
+
+func GinLogger() gin.HandlerFunc {
+
+	return func(c *gin.Context) {
+		// Start timer
+		start := time.Now()
+
+		// Process request
+		c.Next()
+
+		// Stop timer
+		end := time.Now()
+		latency := end.Sub(start)
+
+		clientIP := c.ClientIP()
+		method := c.Request.Method
+		statusCode := c.Writer.Status()
+
+		Logger.Notice("[GIN] %v | %3d | %12v | %s | %-7s %s %s\n%s",
+			end.Format("2006/01/02 - 15:04:05"),
+			statusCode,
+			latency,
+			clientIP,
+			method,
+			c.Request.URL.String(),
+			c.Request.URL.Opaque,
+			c.Errors.String())
+
 	}
 }
