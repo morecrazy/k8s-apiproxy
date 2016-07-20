@@ -102,7 +102,7 @@ func (kubeCmd *KubeCmdImpl) UpdateQuota(appName, appNamespace, oldVersion, oldCp
 	" | kubectl rolling-update " + appName + " --update-period=5s --namespace=" + appNamespace + " -f - "								//滚动更新
 
 	common.Logger.Info("The cmd is: %v", cmd)
-	//go Run(cmd, appName, appNamespace)
+	go Run(cmd, appName, appNamespace)
 	return cmd, nil
 }
 
