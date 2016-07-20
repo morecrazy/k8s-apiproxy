@@ -97,12 +97,12 @@ func (kubeCmd *KubeCmdImpl) UpdateQuota(appName, appNamespace, oldVersion, oldCp
 	" | sed 's/resourceVersion:.*/resourceVersion: ''/g' " +
 	" | sed 's/name: " + appName + "/name: " + newAppName + "/g' " +   //替换rc名字
 	" | sed 's/version: " + oldVersion + "/version: " + newVersion + "/g' " +		  //替换rc版本
-	" | sed 's/cpu: " + oldCpu + "/cpu: " + cpu + "/g' " + 							 //替换cpu
+	" | sed 's/cpu: \"" + oldCpu + "\"/cpu: " + cpu + "/g' " + 							 //替换cpu
 	" | sed 's/memory: " + oldMem + "/memory: " + mem + "/g' " + 					//替换mem
 	" | kubectl rolling-update " + appName + " --update-period=5s --namespace=" + appNamespace + " -f - "								//滚动更新
 
 	common.Logger.Info("The cmd is: %v", cmd)
-	go Run(cmd, appName, appNamespace)
+	//go Run(cmd, appName, appNamespace)
 	return cmd, nil
 }
 
