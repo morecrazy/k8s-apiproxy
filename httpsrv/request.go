@@ -499,7 +499,8 @@ func CreateService(c * gin.Context) {
 			},
 		}
 
-		common.Logger.Debug("The Svc Request Json is: %v", svcRequestJson)
+		jsonString, _ := json.Marshal(svcRequestJson)
+		common.Logger.Debug("The Svc Request Json is: %v", string(jsonString))
 		fetcher := new(util.KubeResponseFetcher)
 		statusCode, _, err := fetcher.CreateSvc(appNamespace, svcRequestJson)
 		if statusCode != http.StatusCreated {
