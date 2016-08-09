@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"third/gorm"
 	"codoon_ops/kubernetes-apiproxy/util"
+	"backend/common"
 )
 
 var KubeDb *gorm.DB
@@ -498,6 +499,7 @@ func CreateService(c * gin.Context) {
 			},
 		}
 
+		common.Logger.Debug("The Svc Request Json is: %v", svcRequestJson)
 		fetcher := new(util.KubeResponseFetcher)
 		statusCode, _, err := fetcher.CreateSvc(appNamespace, svcRequestJson)
 		if statusCode != http.StatusCreated {
