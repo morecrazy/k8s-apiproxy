@@ -71,7 +71,7 @@ func (kubeCmd *KubeCmdImpl) Restart(appName, appNamespace, oldVersion, oldImage 
 	" | sed 's/resourceVersion:.*/resourceVersion: ''/g' " +
 	" | sed 's/name: " + appName + "/name: " + newAppName + "/g' " +   //替换rc名字
 	" | sed 's/version: " + oldVersion + "/version: " + newVersion + "/g' " +		  //替换rc版本
-	" | kubectl rolling-update " + appName + " --update-period=10s --namespace=" + appNamespace + " -f - "	//滚动更新
+	" | kubectl rolling-update " + appName + " --update-period=5s --namespace=" + appNamespace + " -f - "	//滚动更新
 
 	common.Logger.Info("The cmd is: %v", cmd)
 	go Run(cmd, appName, appNamespace)
@@ -85,11 +85,10 @@ func (kubeCmd *KubeCmdImpl) UpdateQuota(appName, appNamespace, oldVersion, oldCp
 	newVersion = "v" + newVersion
 
 	newAppName := ""
-	strs := strings.Split(appName, "-")
-	for i :=0; i < len(strs) -1; i++ {
-		newAppName += strs[i] + "-"
-	}
-	newAppName = newAppName + newVersion
+	strs := strings.Split(appName, "-v")
+	newAppName = strs[0]
+
+	newAppName = newAppName + "-" + newVersion
 	common.Logger.Info("New App Name is: %v", newAppName)
 
 	//滚动更新
@@ -113,11 +112,10 @@ func (kubeCmd *KubeCmdImpl) UpdateCmd(appName, appNamespace, oldVersion, oldCmd,
 	newVersion = "v" + newVersion
 
 	newAppName := ""
-	strs := strings.Split(appName, "-")
-	for i :=0; i < len(strs) -1; i++ {
-		newAppName += strs[i] + "-"
-	}
-	newAppName = newAppName + newVersion
+	strs := strings.Split(appName, "-v")
+	newAppName = strs[0]
+
+	newAppName = newAppName + "-" + newVersion
 	common.Logger.Debug("New App Name is: %v", newAppName)
 
 	//滚动更新
@@ -126,7 +124,7 @@ func (kubeCmd *KubeCmdImpl) UpdateCmd(appName, appNamespace, oldVersion, oldCmd,
 	" | sed 's/name: " + appName + "/name: " + newAppName + "/g " +   //替换rc名字
 	" | sed 's/version: " + oldVersion + "/version: " + newVersion + "/g " +		  //替换rc版本
 	" | sed 's/command: " + oldCmd + "/cmd: " + newCmd + "/g " + 					//替换mem
-	" | kubectl rolling-update " + appName + " --update-period=20s --namespace=" + appNamespace + " -f - "
+	" | kubectl rolling-update " + appName + " --update-period=5s --namespace=" + appNamespace + " -f - "
 
 	common.Logger.Info("The cmd is: %v", cmd)
 	go Run(cmd, appName, appNamespace)
