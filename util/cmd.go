@@ -28,7 +28,7 @@ func Run(command , appName, appNamespace string) error {
 }
 
 func ExecCommand(command string) ([]byte, error) {
-	cmd := exec.Command("/bin/sh", "-c", command)
+	cmd := exec.Command(command)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		Logger.Error("StdoutPipe: " + err.Error())
