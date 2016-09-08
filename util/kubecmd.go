@@ -21,7 +21,7 @@ type KubeCmdImpl struct {
 }
 
 func (kubeCmd *KubeCmdImpl) GetNodesIP(appName, appNamespace string) ([]byte, error) {
-	cmd := "kubectl get pods -o wide --namespace=" + appNamespace + " | grep '^" + appName + "' | awk '{print $6}'"
+	cmd := "kubectl -s " + KubeUrl + " get pods -o wide --namespace=" + appNamespace + " | grep '^" + appName + "' | awk '{print $6}'"
 	common.Logger.Info("The cmd is: %v", cmd)
 	var bytes []byte
 	var err error
@@ -45,7 +45,7 @@ func (kubeCmd *KubeCmdImpl) GetNodesIP(appName, appNamespace string) ([]byte, er
 }
 
 func (kubeCmd *KubeCmdImpl) Delivery(appName, appNamespace, image string) (string, error) {
-	cmd := "kubectl rolling-update " + appName + " --update-period=5s --namespace=" + appNamespace + " --image=" + image
+	cmd := "kubectl -s " + KubeUrl + " rolling-update " + appName + " --update-period=5s --namespace=" + appNamespace + " --image=" + image
 	common.Logger.Info("The cmd is: %v", cmd)
 	go Run(cmd, appName, appNamespace)
 	return cmd, nil
@@ -67,7 +67,7 @@ func (kubeCmd *KubeCmdImpl) Restart(appName, appNamespace, oldVersion, oldImage 
 	common.Logger.Debug("New App Name is: %v", newAppName)
 
 	//滚动更新
-	cmd := "kubectl get rc " + appName + " --namespace=" + appNamespace + " -o yaml " +
+	cmd := "kubectl -s " + KubeUrl + " get rc " + appName + " --namespace=" + appNamespace + " -o yaml " +
 	" | sed 's/resourceVersion:.*/resourceVersion: ''/g' " +
 	" | sed 's/name: " + appName + "/name: " + newAppName + "/g' " +   //替换rc名字
 	" | sed 's/version: " + oldVersion + "/version: " + newVersion + "/g' " +		  //替换rc版本
@@ -92,7 +92,7 @@ func (kubeCmd *KubeCmdImpl) UpdateQuota(appName, appNamespace, oldVersion, oldCp
 	common.Logger.Info("New App Name is: %v", newAppName)
 
 	//滚动更新
-	cmd := "kubectl get rc " + appName + " --namespace=" + appNamespace + " -o yaml " +
+	cmd := "kubectl -s " + KubeUrl + " get rc " + appName + " --namespace=" + appNamespace + " -o yaml " +
 	" | sed 's/resourceVersion:.*/resourceVersion: ''/g' " +
 	" | sed 's/name: " + appName + "/name: " + newAppName + "/g' " +   //替换rc名字
 	" | sed 's/version: " + oldVersion + "/version: " + newVersion + "/g' " +		  //替换rc版本
@@ -119,7 +119,7 @@ func (kubeCmd *KubeCmdImpl) UpdateCmd(appName, appNamespace, oldVersion, oldCmd,
 	common.Logger.Debug("New App Name is: %v", newAppName)
 
 	//滚动更新
-	cmd := "kubectl get rc " + appName + " --namespace=" + appNamespace + " -o yaml " +
+	cmd := "kubectl -s " + KubeUrl + " get rc " + appName + " --namespace=" + appNamespace + " -o yaml " +
 	" | sed 's/resourceVersion:.*/resourceVersion: ''/g' " +
 	" | sed 's/name: " + appName + "/name: " + newAppName + "/g " +   //替换rc名字
 	" | sed 's/version: " + oldVersion + "/version: " + newVersion + "/g " +		  //替换rc版本
@@ -134,13 +134,13 @@ func (kubeCmd *KubeCmdImpl) UpdateCmd(appName, appNamespace, oldVersion, oldCmd,
 func (kubeCmd *KubeCmdImpl) Stop(appName, appNamespace, file string) error {
 	common.Logger.Info("Stopping service: %v", appName)
 	//先保存当前配置到特地文件中
-	cmd := "kubectl get rc " + appName + " --namespace=" + appNamespace + " -o yaml >" + file
+	cmd := "kubectl -s " + KubeUrl + " get rc " + appName + " --namespace=" + appNamespace + " -o yaml >" + file
 	if _, err := ExecCommand(cmd); err != nil {
 		return err
 	}
 
 	//缩减容器个数为0既而停止服务
-	cmd = "kubectl scale rc " + appName + " --namespace=" + appNamespace + " --replicas=0"
+	cmd = "kubectl -s " + KubeUrl + " scale rc " + appName + " --namespace=" + appNamespace + " --replicas=0"
 	if _, err := ExecCommand(cmd); err != nil {
 		return err
 	}
@@ -150,12 +150,12 @@ func (kubeCmd *KubeCmdImpl) Stop(appName, appNamespace, file string) error {
 func (kubeCmd *KubeCmdImpl) Create(appName, appNamespace, file string) error {
 	common.Logger.Info("Starting service: %v", appName)
 	//删除久的rc
-	cmd := "kubectl delete rc " + appName + " --namespace=" + appNamespace
+	cmd := "kubectl -s " + KubeUrl + " delete rc " + appName + " --namespace=" + appNamespace
 	if _, err := ExecCommand(cmd); err != nil {
 		return err
 	}
 
-	cmd = "kubectl create -f " + file
+	cmd = "kubectl -s " + KubeUrl + " create -f " + file
 	if _, err := ExecCommand(cmd); err != nil {
 		return err
 	}
@@ -163,7 +163,7 @@ func (kubeCmd *KubeCmdImpl) Create(appName, appNamespace, file string) error {
 }
 
 func (kubeCmd *KubeCmdImpl) Scale(appName, appNamespace, replicas string) error {
-	cmd := "kubectl scale rc " + appName + " --namespace=" + appNamespace + " --replicas=" + replicas
+	cmd := "kubectl -s " + KubeUrl + " scale rc " + appName + " --namespace=" + appNamespace + " --replicas=" + replicas
 	common.Logger.Info("The cmd is: %v", cmd)
 
 	if _, err := ExecCommand(cmd); err != nil {

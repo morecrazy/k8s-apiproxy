@@ -236,7 +236,7 @@ func getServiceList(fetcher util.KubeResponseFetch) (int, []interface{}, error) 
 
 		//获取所有实例(容器)运行状态
 		status := ""
-		cmd := "kubectl describe rc " + name + " --namespace=" + namespace
+		cmd := "kubectl -s " + util.KubeUrl + " describe rc " + name + " --namespace=" + namespace
 		bytes, err := util.ExecCommand(cmd)
 		if err != nil {
 			return statusCode, nil, err
@@ -320,7 +320,7 @@ func getServiceMeta(appName, appNamespace string, fetcher util.KubeResponseFetch
 
 	//获取实例运行状态
 	status := ""
-	cmd := "kubectl describe rc " + appName + " --namespace=" + appNamespace
+	cmd := "kubectl -s " + util.KubeUrl + " describe rc " + appName + " --namespace=" + appNamespace
 	bts, err = util.ExecCommand(cmd)
 	if err != nil {
 		return statusCode, nil, err
@@ -337,7 +337,7 @@ func getServiceMeta(appName, appNamespace string, fetcher util.KubeResponseFetch
 
 	//获取svc name
 	svcNameList := []string{}
-	cmd = "kubectl get svc -l app=" + svcName + " --namespace=" + appNamespace
+	cmd = "kubectl -s " + util.KubeUrl + " get svc -l app=" + svcName + " --namespace=" + appNamespace
 	common.Logger.Debug("The cmd is: %v", cmd)
 	bts, err = util.ExecCommand(cmd)
 	if err != nil {
